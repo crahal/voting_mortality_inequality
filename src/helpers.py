@@ -3,7 +3,9 @@ import json
 import time
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 import geopandas as gpd
 import matplotlib as mpl
@@ -25,6 +27,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 DERIVED_DIR = DATA_DIR / "derived"
 OUTPUT_DIR = PROJECT_ROOT / "output"
+FIGURES_DIR = OUTPUT_DIR / "figures"
+TABLES_DIR = OUTPUT_DIR / "tables"
 
 mpl.rcParams["font.family"] = "Helvetica"
 
@@ -213,6 +217,8 @@ PARTY_METADATA = {
 def _ensure_output_dirs():
     DERIVED_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    TABLES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _slugify(value):
@@ -231,8 +237,8 @@ def _party_metadata_from_code_or_column(value, fallback_label=None):
 
 
 def _save_figure(fig, stem):
-    fig.savefig(OUTPUT_DIR / f"{stem}.pdf", bbox_inches="tight")
-    fig.savefig(OUTPUT_DIR / f"{stem}.svg", bbox_inches="tight")
+    fig.savefig(FIGURES_DIR / f"{stem}.pdf", bbox_inches="tight")
+    fig.savefig(FIGURES_DIR / f"{stem}.svg", bbox_inches="tight")
 
 
 def _sha256(path):
@@ -983,6 +989,691 @@ def print_mean_ASMRs(df_2019, df_2024):
                     f"{party_label} mean ASMR for {sex} in {year}: ",
                     np.round(mean_value, 3),
                 )
+
+
+def _mortality_sheet(year, sex):
+    sheets = {
+        2019: {"male": "Table 1", "female": "Table 2"},
+        2024: {"male": "Table 3", "female": "Table 4"},
+    }
+    return sheets[year][sex]
+
+
+def _get_asmr_ci(year, constituency, sex):
+    df = pd.read_excel(
+        RAW_DIR / "mortality" / "pcondeathspopulations20192024.xlsx",
+        sheet_name=_mortality_sheet(year, sex),
+        skiprows=5,
+    )
+    match = df[df["Parliamentary Constituency Name"].eq(constituency)]
+    if match.empty:
+        raise KeyError(f"Could not find {constituency} in mortality table for {year}.")
+
+    row = match.iloc[0]
+    return {
+        "ASMR": row["ASMR"],
+        "CI Lower": row["CI Lower"],
+        "CI Upper": row["CI Upper"],
+    }
+
+
+def make_leader_asmr_table():
+    leader_constituencies = {
+        2019: [
+            ("Rishi Sunak", "Conservative", "Richmond (Yorks)"),
+            ("Keir Starmer", "Labour", "Holborn and St Pancras"),
+        ],
+        2024: [
+            ("Rishi Sunak", "Conservative", "Richmond and Northallerton"),
+            ("Keir Starmer", "Labour", "Holborn and St Pancras"),
+        ],
+    }
+
+    rows = []
+    for year, leaders in leader_constituencies.items():
+        for leader, party, constituency in leaders:
+            for sex in ["female", "male"]:
+                values = _get_asmr_ci(year, constituency, sex)
+                rows.append(
+                    {
+                        "Year": year,
+                        "Leader": leader,
+                        "Party": party,
+                        "Constituency": constituency,
+                        "Sex": sex.title(),
+                        **values,
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+def _format_asmr_ci(row):
+    return (
+        f"{row['ASMR']:.1f} "
+        f"(95% CI {row['CI Lower']:.1f}-{row['CI Upper']:.1f})"
+    )
+
+
+def _summary_table_coefficient(table, statistic, variable, column):
+    match = table[
+        (table["Statistic"] == statistic)
+        & (table["Variable"] == variable)
+    ]
+    if match.empty:
+        raise KeyError(f"Could not find {statistic} {variable} in summary table.")
+    return float(match.iloc[0][column])
+
+
+def print_manuscript_statistics(table_rho_2019, table_rho_2024):
+    leader_asmr = make_leader_asmr_table()
+    print(
+        "Leader constituency ASMRs "
+        "(ONS deaths registered; age-standardised rates per 100,000)"
+    )
+    for year in [2019, 2024]:
+        print(f"\n{year} registered deaths and constituency boundaries:")
+        rows = leader_asmr[leader_asmr["Year"] == year]
+        for _, leader_row in rows.drop_duplicates("Leader").iterrows():
+            leader = leader_row["Leader"]
+            constituency = leader_row["Constituency"]
+            leader_rows = rows[rows["Leader"] == leader].set_index("Sex")
+            female = _format_asmr_ci(leader_rows.loc["Female"])
+            male = _format_asmr_ci(leader_rows.loc["Male"])
+            print(f"{leader}, {constituency}: female {female}; male {male}.")
+
+    tables = {2019: table_rho_2019, 2024: table_rho_2024}
+    print("\nLabour vote-share correlations with ASMR")
+    for sex_label, variable in [("Male", "ASMR_m"), ("Female", "ASMR_f")]:
+        spearman_2019 = _summary_table_coefficient(
+            tables[2019], "Spearman", variable, "Lab PC"
+        )
+        spearman_2024 = _summary_table_coefficient(
+            tables[2024], "Spearman", variable, "Lab PC"
+        )
+        pearson_2019 = _summary_table_coefficient(
+            tables[2019], "Pearson", variable, "Lab PC"
+        )
+        pearson_2024 = _summary_table_coefficient(
+            tables[2024], "Pearson", variable, "Lab PC"
+        )
+        print(
+            f"{sex_label} ASMR: Spearman rho = {spearman_2019:.3f} (2019), "
+            f"{spearman_2024:.3f} (2024); Pearson r = {pearson_2019:.3f} "
+            f"(2019), {pearson_2024:.3f} (2024)."
+        )
+
+
+def print_p_value_table(table):
+    p_value_columns = [
+        column
+        for column in table.columns
+        if column not in {"Statistic", "Variable", "Year", "N"}
+    ]
+    display_table = table.copy()
+    for column in p_value_columns:
+        display_table[column] = display_table[column].map(
+            lambda value: f"{float(value):.3g}"
+        )
+    print(display_table.to_string(index=False))
+
+
+def _correlation_value_columns(table):
+    metadata_columns = {"Statistic", "Variable", "Year", "N"}
+    return [column for column in table.columns if column not in metadata_columns]
+
+
+def _format_publication_p_value(p_value):
+    p_value = float(p_value)
+    if p_value < 0.001:
+        return "<0.001"
+    return f"{p_value:.3f}".rstrip("0").rstrip(".")
+
+
+def _format_coefficient_with_p_value(coefficient, p_value):
+    return f"{float(coefficient):.3f} ({_format_publication_p_value(p_value)})"
+
+
+PUBLICATION_VARIABLE_LABELS = {
+    "ASMR_f": "ASMR, female",
+    "ASMR_m": "ASMR, male",
+    "ProportionBadHealth": "Not good health",
+    "ProportionDisabled": "Disabled under Equality Act",
+    "ProportionProvidesAnyUnpaidCare": "Any unpaid care",
+    "HealthDeprivationAndDisabilityRank": "Health Deprivation and Disability rank",
+}
+
+PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS = {
+    "Statistic": "Correlation",
+    "Variable": "Health/deprivation measure",
+    "Year": "Year",
+    "N": "N",
+    "Con PC": "Conservative",
+    "Lab PC": "Labour",
+    "Lib PC": "Liberal Democrat",
+    "Brx/RUK PC": "Brexit/Reform UK",
+    "Vote PC": "Turnout",
+}
+
+DOCX_TABLE_COLUMN_WIDTHS = {
+    "Correlation": 900,
+    "Health/deprivation measure": 3300,
+    "Year": 650,
+    "N": 500,
+    "Conservative": 2200,
+    "Labour": 2200,
+    "Liberal Democrat": 2200,
+    "Brexit/Reform UK": 2200,
+    "Turnout": 2200,
+}
+
+MANUSCRIPT_TABLE_MEASURES = [
+    ("ASMR (female)", "ASMR_f"),
+    ("ASMR (male)", "ASMR_m"),
+    ("Not good health", "ProportionBadHealth"),
+    ("Disability", "ProportionDisabled"),
+]
+
+MANUSCRIPT_TABLE_ROWS = [
+    ("Conservative", {2019: "Con PC", 2024: "Con PC"}),
+    ("Labour", {2019: "Lab PC", 2024: "Lab PC"}),
+    ("Liberal Democrat", {2019: "Lib PC", 2024: "Lib PC"}),
+    ("Brexit Party", {2019: "Brx PC", 2024: None}),
+    ("Reform UK", {2019: None, 2024: "RUK PC"}),
+    ("Voter turnout", {2019: "Vote PC", 2024: "Vote PC"}),
+]
+
+DOCX_MANUSCRIPT_COLUMN_WIDTHS = [1150, 1700] + [1700] * 8
+DOCX_PORTRAIT_COLUMN_WIDTHS = [1900, 1500, 2800, 2400, 2400]
+
+
+def make_combined_correlation_p_value_table(
+    table_rho_2019,
+    table_p_2019,
+    table_rho_2024,
+    table_p_2024,
+):
+    rows = []
+    table_pairs = [
+        (table_rho_2019, table_p_2019),
+        (table_rho_2024, table_p_2024),
+    ]
+
+    for table_rho, table_p in table_pairs:
+        p_lookup = table_p.set_index(["Statistic", "Variable"])
+        for _, rho_row in table_rho.iterrows():
+            key = (rho_row["Statistic"], rho_row["Variable"])
+            p_row = p_lookup.loc[key]
+            output_row = {
+                "Statistic": rho_row["Statistic"],
+                "Variable": PUBLICATION_VARIABLE_LABELS.get(
+                    rho_row["Variable"],
+                    rho_row["Variable"],
+                ),
+                "Year": rho_row["Year"],
+                "N": rho_row["N"],
+            }
+
+            for column in _correlation_value_columns(table_rho):
+                output_column = "Brx/RUK PC" if column in {"Brx PC", "RUK PC"} else column
+                output_row[output_column] = _format_coefficient_with_p_value(
+                    rho_row[column],
+                    p_row[column],
+                )
+            rows.append(output_row)
+
+    columns = [
+        "Statistic",
+        "Variable",
+        "Year",
+        "N",
+        "Con PC",
+        "Lab PC",
+        "Lib PC",
+        "Brx/RUK PC",
+        "Vote PC",
+    ]
+    return (
+        pd.DataFrame(rows)
+        .reindex(columns=columns)
+        .rename(columns=PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS)
+    )
+
+
+def _format_manuscript_p_value(p_value):
+    p_value = float(p_value)
+    if p_value < 0.001:
+        return "<0.001"
+    return f"{p_value:.3f}".rstrip("0").rstrip(".")
+
+
+def _format_manuscript_coefficient_with_p_value(coefficient, p_value):
+    return f"{float(coefficient):.3f} ({_format_manuscript_p_value(p_value)})"
+
+
+def _summary_table_row(table, statistic, variable):
+    match = table[
+        (table["Statistic"] == statistic)
+        & (table["Variable"] == variable)
+    ]
+    if match.empty:
+        raise KeyError(f"Could not find {statistic} {variable} in summary table.")
+    return match.iloc[0]
+
+
+def _manuscript_correlation_cell(tables, statistic, variable, year, column):
+    if column is None:
+        return ""
+    rho_row = _summary_table_row(tables[year]["rho"], statistic, variable)
+    p_row = _summary_table_row(tables[year]["p"], statistic, variable)
+    return _format_manuscript_coefficient_with_p_value(
+        rho_row[column],
+        p_row[column],
+    )
+
+
+def make_manuscript_correlation_p_value_rows(
+    table_rho_2019,
+    table_p_2019,
+    table_rho_2024,
+    table_p_2024,
+):
+    tables = {
+        2019: {"rho": table_rho_2019, "p": table_p_2019},
+        2024: {"rho": table_rho_2024, "p": table_p_2024},
+    }
+    rows = []
+    statistic_labels = [
+        ("Spearman", "Spearman rho"),
+        ("Pearson", "Pearson r"),
+    ]
+
+    for statistic, statistic_label in statistic_labels:
+        for row_label, columns_by_year in MANUSCRIPT_TABLE_ROWS:
+            row = [statistic_label, row_label]
+            for _, variable in MANUSCRIPT_TABLE_MEASURES:
+                for year in [2019, 2024]:
+                    row.append(
+                        _manuscript_correlation_cell(
+                            tables,
+                            statistic,
+                            variable,
+                            year,
+                            columns_by_year[year],
+                        )
+                    )
+            rows.append(row)
+
+    n_row = ["", "N"]
+    for _, variable in MANUSCRIPT_TABLE_MEASURES:
+        for year in [2019, 2024]:
+            n_row.append(
+                str(_summary_table_row(tables[year]["rho"], "Spearman", variable)["N"])
+            )
+    rows.append(n_row)
+    return rows
+
+
+def make_portrait_correlation_p_value_rows(
+    table_rho_2019,
+    table_p_2019,
+    table_rho_2024,
+    table_p_2024,
+):
+    tables = {
+        2019: {"rho": table_rho_2019, "p": table_p_2019},
+        2024: {"rho": table_rho_2024, "p": table_p_2024},
+    }
+    rows = []
+    statistic_labels = [
+        ("Spearman", "Spearman rho"),
+        ("Pearson", "Pearson r"),
+    ]
+
+    for measure_label, variable in MANUSCRIPT_TABLE_MEASURES:
+        is_first_measure_row = True
+        for statistic, statistic_label in statistic_labels:
+            is_first_statistic_row = True
+            for row_label, columns_by_year in MANUSCRIPT_TABLE_ROWS:
+                rows.append(
+                    [
+                        measure_label if is_first_measure_row else "",
+                        statistic_label if is_first_statistic_row else "",
+                        row_label,
+                        _manuscript_correlation_cell(
+                            tables,
+                            statistic,
+                            variable,
+                            2019,
+                            columns_by_year[2019],
+                        ),
+                        _manuscript_correlation_cell(
+                            tables,
+                            statistic,
+                            variable,
+                            2024,
+                            columns_by_year[2024],
+                        ),
+                    ]
+                )
+                is_first_measure_row = False
+                is_first_statistic_row = False
+        rows.append(
+            [
+                "",
+                "N",
+                "",
+                str(_summary_table_row(tables[2019]["rho"], "Spearman", variable)["N"]),
+                str(_summary_table_row(tables[2024]["rho"], "Spearman", variable)["N"]),
+            ]
+        )
+    return rows
+
+
+def _docx_run(text, bold=False, size=12):
+    run_properties = (
+        "<w:rFonts w:ascii=\"Arial Narrow\" w:hAnsi=\"Arial Narrow\" "
+        "w:cs=\"Arial Narrow\"/>"
+        f"<w:sz w:val=\"{size}\"/><w:szCs w:val=\"{size}\"/>"
+    )
+    if bold:
+        run_properties = "<w:b/><w:bCs/>" + run_properties
+    return (
+        "<w:r>"
+        f"<w:rPr>{run_properties}</w:rPr>"
+        f"<w:t xml:space=\"preserve\">{escape(str(text))}</w:t>"
+        "</w:r>"
+    )
+
+
+def _docx_paragraph(text="", bold=False, size=12):
+    return (
+        "<w:p>"
+        "<w:pPr><w:spacing w:after=\"20\" w:line=\"140\" w:lineRule=\"exact\"/></w:pPr>"
+        f"{_docx_run(text, bold=bold, size=size)}"
+        "</w:p>"
+    )
+
+
+def _docx_cell(text, bold=False, width=None, grid_span=None, size=14):
+    width_properties = ""
+    if width is not None:
+        width_properties = f"<w:tcW w:w=\"{width}\" w:type=\"dxa\"/>"
+    grid_span_properties = ""
+    if grid_span is not None:
+        grid_span_properties = f"<w:gridSpan w:val=\"{grid_span}\"/>"
+    return (
+        "<w:tc>"
+        "<w:tcPr>"
+        f"{width_properties}"
+        f"{grid_span_properties}"
+        "<w:tcMar>"
+        "<w:top w:w=\"20\" w:type=\"dxa\"/>"
+        "<w:left w:w=\"20\" w:type=\"dxa\"/>"
+        "<w:bottom w:w=\"20\" w:type=\"dxa\"/>"
+        "<w:right w:w=\"20\" w:type=\"dxa\"/>"
+        "</w:tcMar></w:tcPr>"
+        "<w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"120\" "
+        "w:lineRule=\"exact\"/></w:pPr>"
+        f"{_docx_run(text, bold=bold, size=size)}"
+        "</w:p>"
+        "</w:tc>"
+    )
+
+
+def _docx_table(table):
+    borders = "".join(
+        f"<w:{side} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>"
+        for side in ["top", "left", "bottom", "right", "insideH", "insideV"]
+    )
+    column_widths = [DOCX_TABLE_COLUMN_WIDTHS[column] for column in table.columns]
+    rows = [
+        "<w:tr><w:trPr><w:trHeight w:val=\"180\" w:hRule=\"atLeast\"/></w:trPr>"
+        + "".join(
+            _docx_cell(column, bold=True, width=column_widths[index])
+            for index, column in enumerate(table.columns)
+        )
+        + "</w:tr>"
+    ]
+    for _, row in table.iterrows():
+        rows.append(
+            "<w:tr><w:trPr><w:trHeight w:val=\"180\" w:hRule=\"atLeast\"/></w:trPr>"
+            + "".join(
+                _docx_cell(row[column], width=column_widths[index])
+                for index, column in enumerate(table.columns)
+            )
+            + "</w:tr>"
+        )
+    return (
+        "<w:tbl>"
+        "<w:tblPr>"
+        "<w:tblW w:w=\"16478\" w:type=\"dxa\"/>"
+        "<w:tblLayout w:type=\"fixed\"/>"
+        f"<w:tblBorders>{borders}</w:tblBorders>"
+        "</w:tblPr>"
+        + "".join(rows)
+        + "</w:tbl>"
+    )
+
+
+def _docx_row(cells, height=180):
+    return (
+        f"<w:tr><w:trPr><w:trHeight w:val=\"{height}\" "
+        "w:hRule=\"atLeast\"/></w:trPr>"
+        + "".join(cells)
+        + "</w:tr>"
+    )
+
+
+def _docx_manuscript_table(rows):
+    borders = "".join(
+        f"<w:{side} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>"
+        for side in ["top", "left", "bottom", "right", "insideH", "insideV"]
+    )
+    table_grid = "<w:tblGrid>" + "".join(
+        f"<w:gridCol w:w=\"{width}\"/>" for width in DOCX_MANUSCRIPT_COLUMN_WIDTHS
+    ) + "</w:tblGrid>"
+
+    header_1 = [
+        _docx_cell("Correlation", bold=True, width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[0]),
+        _docx_cell(
+            "Political party/measure",
+            bold=True,
+            width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[1],
+        ),
+    ]
+    for measure_label, _ in MANUSCRIPT_TABLE_MEASURES:
+        header_1.append(
+            _docx_cell(
+                measure_label,
+                bold=True,
+                width=sum(DOCX_MANUSCRIPT_COLUMN_WIDTHS[2:4]),
+                grid_span=2,
+            )
+        )
+
+    header_2 = [
+        _docx_cell("", width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[0]),
+        _docx_cell("", width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[1]),
+    ]
+    for index in range(2, len(DOCX_MANUSCRIPT_COLUMN_WIDTHS), 2):
+        header_2.extend(
+            [
+                _docx_cell("2019", bold=True, width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[index]),
+                _docx_cell("2024", bold=True, width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[index + 1]),
+            ]
+        )
+
+    table_rows = [_docx_row(header_1), _docx_row(header_2)]
+    for row in rows:
+        table_rows.append(
+            _docx_row(
+                [
+                    _docx_cell(value, width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[index])
+                    for index, value in enumerate(row)
+                ]
+            )
+        )
+
+    return (
+        "<w:tbl>"
+        "<w:tblPr>"
+        "<w:tblW w:w=\"16450\" w:type=\"dxa\"/>"
+        "<w:tblLayout w:type=\"fixed\"/>"
+        f"<w:tblBorders>{borders}</w:tblBorders>"
+        "</w:tblPr>"
+        + table_grid
+        + "".join(table_rows)
+        + "</w:tbl>"
+    )
+
+
+def _docx_portrait_table(rows):
+    borders = "".join(
+        f"<w:{side} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>"
+        for side in ["top", "left", "bottom", "right", "insideH", "insideV"]
+    )
+    table_grid = "<w:tblGrid>" + "".join(
+        f"<w:gridCol w:w=\"{width}\"/>" for width in DOCX_PORTRAIT_COLUMN_WIDTHS
+    ) + "</w:tblGrid>"
+    header = [
+        _docx_cell(column, bold=True, width=DOCX_PORTRAIT_COLUMN_WIDTHS[index], size=12)
+        for index, column in enumerate(
+            ["Outcome", "Statistic", "Political party/measure", "2019", "2024"]
+        )
+    ]
+    table_rows = [_docx_row(header, height=150)]
+    for row in rows:
+        table_rows.append(
+            _docx_row(
+                [
+                    _docx_cell(value, width=DOCX_PORTRAIT_COLUMN_WIDTHS[index], size=12)
+                    for index, value in enumerate(row)
+                ],
+                height=150,
+            )
+        )
+
+    return (
+        "<w:tbl>"
+        "<w:tblPr>"
+        f"<w:tblW w:w=\"{sum(DOCX_PORTRAIT_COLUMN_WIDTHS)}\" w:type=\"dxa\"/>"
+        "<w:tblLayout w:type=\"fixed\"/>"
+        f"<w:tblBorders>{borders}</w:tblBorders>"
+        "</w:tblPr>"
+        + table_grid
+        + "".join(table_rows)
+        + "</w:tbl>"
+    )
+
+
+def _write_docx_table(path, title, notes, table, orientation="landscape"):
+    table_xml = table if isinstance(table, str) else _docx_table(table)
+    if orientation == "portrait":
+        page_size_xml = "<w:pgSz w:w=\"11906\" w:h=\"16838\"/>"
+    elif orientation == "landscape":
+        page_size_xml = "<w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/>"
+    else:
+        raise ValueError(f"Unsupported DOCX orientation: {orientation}")
+    document_xml = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<w:document "
+        "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+        "<w:body>"
+        f"{_docx_paragraph(title, bold=True, size=16)}"
+        + "".join(_docx_paragraph(note, size=10) for note in notes)
+        + table_xml
+        + "<w:sectPr>"
+        f"{page_size_xml}"
+        "<w:pgMar w:top=\"180\" w:right=\"180\" w:bottom=\"180\" "
+        "w:left=\"180\" w:header=\"180\" w:footer=\"180\" w:gutter=\"0\"/>"
+        "</w:sectPr>"
+        "</w:body>"
+        "</w:document>"
+    )
+    content_types = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+        "<Default Extension=\"rels\" "
+        "ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+        "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+        "<Override PartName=\"/word/document.xml\" "
+        "ContentType=\"application/vnd.openxmlformats-officedocument."
+        "wordprocessingml.document.main+xml\"/>"
+        "</Types>"
+    )
+    relationships = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<Relationships "
+        "xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        "<Relationship Id=\"rId1\" "
+        "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+        "officeDocument\" Target=\"word/document.xml\"/>"
+        "</Relationships>"
+    )
+
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as docx:
+        docx.writestr("[Content_Types].xml", content_types)
+        docx.writestr("_rels/.rels", relationships)
+        docx.writestr("word/document.xml", document_xml)
+
+
+def export_correlation_tables_docx(
+    table_rho_2019,
+    table_p_2019,
+    table_rho_2024,
+    table_p_2024,
+    filename="correlation_and_p_value_tables.docx",
+):
+    _ensure_output_dirs()
+    manuscript_rows = make_manuscript_correlation_p_value_rows(
+        table_rho_2019,
+        table_p_2019,
+        table_rho_2024,
+        table_p_2024,
+    )
+    output_path = TABLES_DIR / filename
+    _write_docx_table(
+        output_path,
+        "Table 1. Political party by mortality, health and disability",
+        [
+            "Cells show correlation coefficient (p value). ASMR denotes age-standardised mortality rate per 100,000 population.",
+            "Party rows are vote shares except voter turnout; p values <0.001 are shown as <0.001.",
+        ],
+        _docx_manuscript_table(manuscript_rows),
+        orientation="landscape",
+    )
+    print(f"Wrote {output_path}")
+    return output_path
+
+
+def export_full_correlation_tables_docx(
+    table_rho_2019,
+    table_p_2019,
+    table_rho_2024,
+    table_p_2024,
+    filename="full_correlation_and_p_value_table.docx",
+):
+    _ensure_output_dirs()
+    full_table = make_combined_correlation_p_value_table(
+        table_rho_2019,
+        table_p_2019,
+        table_rho_2024,
+        table_p_2024,
+    )
+    output_path = TABLES_DIR / filename
+    _write_docx_table(
+        output_path,
+        "Supplementary table. Political party by mortality, health, unpaid care and deprivation",
+        [
+            "Cells show correlation coefficient (p value). ASMR denotes age-standardised mortality rate per 100,000 population.",
+            "Party columns are vote shares except voter turnout; Brexit/Reform UK is Brexit Party in 2019 and Reform UK in 2024.",
+            "P values <0.001 are shown as <0.001.",
+        ],
+        full_table,
+        orientation="landscape",
+    )
+    print(f"Wrote {output_path}")
+    return output_path
 
 
 def plot_scatters(df_2019, df_2024, config_list):
