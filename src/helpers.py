@@ -1,4 +1,6 @@
+import hashlib
 import json
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -25,6 +27,164 @@ DERIVED_DIR = DATA_DIR / "derived"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
 mpl.rcParams["font.family"] = "Helvetica"
+
+RAW_DATA_SOURCES = [
+    {
+        "path": "data/raw/census/2019_disability.xlsx",
+        "sha256": "b3b1c8e36d80d7082bc3ef90cf90f6c193a1c97b726f4be64bb252029617dad8",
+        "size": 51506,
+        "source": "https://api.beta.ons.gov.uk/v1/filter-outputs/23eb5da8-fef7-402e-b42b-91b9991d6dd4",
+        "download": "ons_filter_output:23eb5da8-fef7-402e-b42b-91b9991d6dd4:xls",
+        "note": "ONS Census 2021 custom filter output.",
+    },
+    {
+        "path": "data/raw/census/2019_health.csv",
+        "sha256": "7fd3266324b3b5cf5cd23700d8eddea94a0b26d058b769cb28fdcb8a2fd2ec43",
+        "size": 81292,
+        "source": "https://api.beta.ons.gov.uk/v1/datasets/RM014/editions/2021/versions/1",
+        "download": "ons_custom_filter:RM014:2021:1:wpc:health_in_general_3a:csv",
+        "note": "ONS Census 2021 custom filter generated for Westminster constituencies and General health (3 categories).",
+    },
+    {
+        "path": "data/raw/census/2019_unpaid_care.xlsx",
+        "sha256": "c82d55a80f3ed70cccd0042d259e4db810a4478af631e5d15e5882191bf0add9",
+        "size": 74546,
+        "source": "https://api.beta.ons.gov.uk/v1/filter-outputs/11f0ca17-90e4-4dd7-8812-0f1cf8cc353a",
+        "download": "ons_filter_output:11f0ca17-90e4-4dd7-8812-0f1cf8cc353a:xls",
+        "note": "ONS Census 2021 custom filter output.",
+    },
+    {
+        "path": "data/raw/census/2024_disability.xlsx",
+        "sha256": "736195c3d67b9b0318e8a343a08b6e18decf650555721a727ba06da49672488d",
+        "size": 52344,
+        "source": "https://api.beta.ons.gov.uk/v1/filter-outputs/e816c41e-5232-490e-8e5a-b569acf85785",
+        "download": "ons_filter_output:e816c41e-5232-490e-8e5a-b569acf85785:xls",
+        "note": "ONS Census 2021 custom post-2019 constituency output.",
+    },
+    {
+        "path": "data/raw/census/2024_health.csv",
+        "sha256": "c187f9a8275d646a7171e2fec44daa8027a584aefe25786d1781bf3d9fc06235",
+        "size": 84962,
+        "source": "https://api.beta.ons.gov.uk/v1/datasets/RM014/editions/2021/versions/1",
+        "download": "ons_custom_filter:RM014:2021:1:p19wpc:health_in_general_3a:csv",
+        "note": "ONS Census 2021 custom filter generated for post-2019 Westminster constituencies and General health (3 categories).",
+    },
+    {
+        "path": "data/raw/census/2024_unpaid_care.xlsx",
+        "sha256": "97c50be022d94ba747c0fa449a63075a48cfd9891b9465bd71a59864bcec455d",
+        "size": 75418,
+        "source": "https://api.beta.ons.gov.uk/v1/filter-outputs/f3222b3c-7f45-43dd-a468-aa3c31aea85e",
+        "download": "ons_filter_output:f3222b3c-7f45-43dd-a468-aa3c31aea85e:xls",
+        "note": "ONS Census 2021 custom post-2019 constituency output.",
+    },
+    {
+        "path": "data/raw/deprivation/File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv",
+        "sha256": "0c378543ffd85029ebb9672a9745dbcbde77bcc84a68e2474c8a222df20eee57",
+        "size": 9695427,
+        "source": "https://www.gov.uk/government/statistics/english-indices-of-deprivation-2019",
+        "download": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/845345/File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv",
+        "normalize_newlines": True,
+        "note": "Downloaded CSV is normalized to LF line endings before checksum verification.",
+    },
+    {
+        "path": "data/raw/deprivation/deprivation_2025.xlsx",
+        "sha256": "da152cbb4f976f71ea2da80e9dc8c8423cd4a4ea7a19b79db7461784175e8b03",
+        "size": 779722,
+        "source": "https://commonslibrary.parliament.uk/research-briefings/cbp-7327/",
+        "download": "https://researchbriefings.files.parliament.uk/documents/CBP-7327/Deprivation-in-English-constituencies.xlsx",
+        "note": "House of Commons Library constituency deprivation workbook.",
+    },
+    {
+        "path": "data/raw/deprivation/oa11_lsoa11_lookup.csv",
+        "sha256": "f58f69c8e693c617d26da5b0c01a711d9810c4a4b8ae3a817c1f049957a2ef61",
+        "size": 3628176,
+        "source": "https://geoportal.statistics.gov.uk/",
+        "download": "arcgis:oa11_lsoa11_lookup",
+        "note": "ONS ArcGIS OA11-to-LSOA11 lookup cached as CSV.",
+    },
+    {
+        "path": "data/raw/deprivation/oa11_pcon11_lookup.csv",
+        "sha256": "59e21ed574b0e8b5b3d567bab1785ff4c861ffb786da88066f93a29d262276e0",
+        "size": 6512932,
+        "source": "https://geoportal.statistics.gov.uk/",
+        "download": "arcgis:oa11_pcon11_lookup",
+        "note": "ONS ArcGIS OA11-to-PCON11 lookup cached as CSV.",
+    },
+    {
+        "path": "data/raw/life_expectancy/HID_data_Life expectancy and mortality.csv",
+        "sha256": "5b7eeda2808cb354386a112ccfc7274a877ce669590b4ee240c39ca803b07bdc",
+        "size": 5618322,
+        "source": "https://fingertips.phe.org.uk/profile/health-profiles",
+        "download": None,
+        "note": "OHID Fingertips extract used for the temporal context figure.",
+    },
+    {
+        "path": "data/raw/life_expectancy/trends_in_sii.xlsx",
+        "sha256": "8c9ad8da8b868579e3119b147cbfc47b4abcf6e84878aaa65b9c0200f5df8770",
+        "size": 10711,
+        "source": "https://fingertips.phe.org.uk/profile/health-profiles",
+        "download": None,
+        "note": "Local workbook of SII trend data used for the temporal context figure.",
+    },
+    {
+        "path": "data/raw/mortality/pcondeathspopulations20192024.xlsx",
+        "sha256": "f706b80f2144be283f31cee5eaaf4cdfe9dd49d5d10dacc32e4bfcbe8125cd39",
+        "size": 222513,
+        "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/3175numbersandagestandardisedmortalityratesofdeathspopulationcountsbysexandparliamentaryconstituencyenglandandwalesdeathsregisteredin2019and2024",
+        "download": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/3175numbersandagestandardisedmortalityratesofdeathspopulationcountsbysexandparliamentaryconstituencyenglandandwalesdeathsregisteredin2019and2024/pcondeathspopulations20192024.xlsx",
+        "note": "ONS ad hoc release 3175.",
+    },
+    {
+        "path": "data/raw/voting/HoC-GE2019-results-by-constituency.xlsx",
+        "sha256": "18a183e5dbf243c898ebcaed2df7d5b86fe18f2d7fb0ba9af203e26e3a76e36a",
+        "size": 164288,
+        "source": "https://commonslibrary.parliament.uk/research-briefings/cbp-8749/",
+        "download": "https://researchbriefings.files.parliament.uk/documents/CBP-8749/HoC-GE2019-results-by-constituency.xlsx",
+        "note": "House of Commons Library detailed constituency results.",
+    },
+    {
+        "path": "data/raw/voting/HoC-GE2024-results-by-constituency.xlsx",
+        "sha256": "41c220a08c662f60750477e60c672149ad0b126bf3d7cedddea1b8f1748c05bc",
+        "size": 155348,
+        "source": "https://commonslibrary.parliament.uk/research-briefings/cbp-10009/",
+        "download": "https://researchbriefings.files.parliament.uk/documents/CBP-10009/HoC-GE2024-results-by-constituency.xlsx",
+        "note": "House of Commons Library detailed constituency results.",
+    },
+    {
+        "path": "data/shapefile/2019/WPC_Dec_2019_GCB_UK.shp",
+        "sha256": "ae65b1d2eae1964f0f9515737e68225a414bfc71ce14d7c568e547bb2e0e5a20",
+        "size": 9189180,
+        "source": "https://geoportal.statistics.gov.uk/datasets/ons::wpc-dec-2019-generalised-clipped-boundaries-uk",
+        "download": None,
+        "note": "ONS 2019 Westminster Parliamentary Constituency boundary shapefile component.",
+    },
+    {
+        "path": "data/shapefile/2024/PCON_JULY_2024_UK_BFC.shp",
+        "sha256": "b2554563646912c1d86453ea86eaf8ad906aaaf6c337d5112a436d68ffae91f2",
+        "size": 142526368,
+        "source": "https://geoportal.statistics.gov.uk/datasets/ons::pcon-july-2024-boundaries-uk-bfc",
+        "download": None,
+        "note": "ONS 2024 Parliamentary Constituency full-resolution clipped boundary shapefile component.",
+    },
+]
+
+RAW_DATA_SOURCE_EXTRA_FILES = {
+    "data/shapefile/2019/WPC_Dec_2019_GCB_UK.cpg": ("3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824", 5),
+    "data/shapefile/2019/WPC_Dec_2019_GCB_UK.dbf": ("1e6c3e759d4b55153bbd35aba8a09e5af7d910410d259d191f57ad449d870a5e", 97108),
+    "data/shapefile/2019/WPC_Dec_2019_GCB_UK.prj": ("d97d276680377a05a19a8b8030ae04c4a87e883a9e5c07d0c646e5402e773a89", 417),
+    "data/shapefile/2019/WPC_Dec_2019_GCB_UK.shp.xml": ("f056803a2c0d7d7b0f823cdd85dd623b9d3e282d777f22dc0bf82035f7b18c87", 250),
+    "data/shapefile/2019/WPC_Dec_2019_GCB_UK.shx": ("b6fa747cef3008bd91620de1bde1a34f39e27fd8809f4e69f28880df6bc19372", 5300),
+    "data/shapefile/2024/PCON_JULY_2024_UK_BFC.cpg": ("3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824", 5),
+    "data/shapefile/2024/PCON_JULY_2024_UK_BFC.dbf": ("58146400af6d0db770afe429e59008c12db988fcff9529cffe709c68c79be95e", 108190),
+    "data/shapefile/2024/PCON_JULY_2024_UK_BFC.prj": ("d97d276680377a05a19a8b8030ae04c4a87e883a9e5c07d0c646e5402e773a89", 417),
+    "data/shapefile/2024/PCON_JULY_2024_UK_BFC.shp.xml": ("2e96c9fd308c38a5680adf8d3e351d994e330298d02df8759af729a05683cddc", 222),
+    "data/shapefile/2024/PCON_JULY_2024_UK_BFC.shx": ("38aab6e12c83ae3cfe5516803c9fd7c0649236a452c159882c34f856d35cc753", 5300),
+}
+
+EXPECTED_SUMMARY_TABLE_HASHES = {
+    "2019": "97b368775048aafee48d17974b71b770163c420eed12b0fc8d7ebf42c724895b",
+    "2024": "2252b88fb687769d70bb495898a3a5ec0a6b9e4100b42ab521239372f175e729",
+}
 
 PARTY_METADATA = {
     "Lab": {
@@ -73,6 +233,302 @@ def _party_metadata_from_code_or_column(value, fallback_label=None):
 def _save_figure(fig, stem):
     fig.savefig(OUTPUT_DIR / f"{stem}.pdf", bbox_inches="tight")
     fig.savefig(OUTPUT_DIR / f"{stem}.svg", bbox_inches="tight")
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _download_raw_file(url, path, normalize_newlines=False):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".download")
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            data = response.read()
+    except Exception as exc:
+        raise RuntimeError(f"Could not download {url}") from exc
+    if normalize_newlines:
+        data = data.replace(b"\r\n", b"\n")
+    tmp_path.write_bytes(data)
+    tmp_path.replace(path)
+
+
+def _read_json_url(url, payload=None):
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0",
+        },
+        method="POST" if payload is not None else "GET",
+    )
+    with urllib.request.urlopen(request) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _download_ons_filter_output(download_id, path):
+    _, output_id, filetype = download_id.split(":")
+    output_url = f"https://api.beta.ons.gov.uk/v1/filter-outputs/{output_id}"
+    metadata = {}
+    for _ in range(24):
+        metadata = _read_json_url(output_url)
+        if filetype in metadata.get("downloads", {}):
+            break
+        time.sleep(5)
+    if filetype not in metadata.get("downloads", {}):
+        state = metadata.get("state", "unknown")
+        raise RuntimeError(f"ONS filter output {output_id} has no {filetype} download; state={state}.")
+    download_url = metadata["downloads"][filetype]["href"]
+    _download_raw_file(download_url, path)
+
+
+def _download_ons_custom_filter(download_id, path):
+    _, dataset_id, edition, version, area_dimension, measure_dimension, filetype = (
+        download_id.split(":")
+    )
+    payload = {
+        "dataset": {
+            "id": dataset_id,
+            "edition": edition,
+            "version": int(version),
+        },
+        "population_type": "UR",
+        "dimensions": [
+            {"name": area_dimension, "is_area_type": True},
+            {"name": measure_dimension},
+        ],
+    }
+    filter_data = _read_json_url("https://api.beta.ons.gov.uk/v1/filters", payload)
+    output_data = _read_json_url(
+        f"https://api.beta.ons.gov.uk/v1/filters/{filter_data['filter_id']}/submit",
+        {},
+    )
+    _download_ons_filter_output(
+        f"ons_filter_output:{output_data['filter_output_id']}:{filetype}",
+        path,
+    )
+
+
+def _download_arcgis_lookup(download_id, path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if download_id == "arcgis:oa11_lsoa11_lookup":
+        _read_arcgis_lookup(
+            path,
+            (
+                "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/"
+                "OA11_LSOA11_MSOA11_LAD11_EW_LUv2_b3fe7c68f4b2420185eaff6284d4c125/"
+                "FeatureServer/0/query"
+            ),
+            ["OA11CD", "LSOA11CD"],
+        )
+    elif download_id == "arcgis:oa11_pcon11_lookup":
+        _read_arcgis_lookup(
+            path,
+            (
+                "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/"
+                "OA11_PCON11_EER11_EW_LU_529f687ffa0e4f408c9968ae92435e8c/"
+                "FeatureServer/0/query"
+            ),
+            ["OA11CD", "PCON11CD", "PCON11NM"],
+        )
+    else:
+        raise ValueError(f"Unknown ArcGIS download id: {download_id}")
+
+
+def _verify_file(path, expected_sha256, expected_size):
+    if not path.exists():
+        raise FileNotFoundError(f"Missing required data file: {path}")
+    actual_size = path.stat().st_size
+    if actual_size != expected_size:
+        raise ValueError(
+            f"{path} has size {actual_size}, expected {expected_size}. "
+            "Do not continue because the analysis input changed."
+        )
+    actual_sha256 = _sha256(path)
+    if actual_sha256 != expected_sha256:
+        raise ValueError(
+            f"{path} has sha256 {actual_sha256}, expected {expected_sha256}. "
+            "Do not continue because the analysis input changed."
+        )
+
+
+def _raw_data_file_specs():
+    specs = list(RAW_DATA_SOURCES)
+    for path, (sha256, size) in RAW_DATA_SOURCE_EXTRA_FILES.items():
+        specs.append({"path": path, "sha256": sha256, "size": size, "download": None})
+    return specs
+
+
+def ensure_raw_data(download=True, verify=True):
+    """Fetch missing direct-download inputs and verify every raw file used by the analysis."""
+    failures = []
+    for spec in _raw_data_file_specs():
+        path = PROJECT_ROOT / spec["path"]
+        if download and not path.exists():
+            download_url = spec.get("download")
+            if isinstance(download_url, str) and download_url.startswith("arcgis:"):
+                _download_arcgis_lookup(download_url, path)
+            elif isinstance(download_url, str) and download_url.startswith("ons_filter_output:"):
+                _download_ons_filter_output(download_url, path)
+            elif isinstance(download_url, str) and download_url.startswith("ons_custom_filter:"):
+                _download_ons_custom_filter(download_url, path)
+            elif download_url:
+                _download_raw_file(
+                    download_url,
+                    path,
+                    normalize_newlines=spec.get("normalize_newlines", False),
+                )
+            else:
+                failures.append(
+                    f"{spec['path']} is missing and has no stable direct-download URL. "
+                    f"Source: {spec.get('source', 'not recorded')}"
+                )
+
+    if failures:
+        raise FileNotFoundError("\n".join(failures))
+
+    if verify:
+        for spec in _raw_data_file_specs():
+            _verify_file(PROJECT_ROOT / spec["path"], spec["sha256"], spec["size"])
+        validate_raw_data_schema()
+
+    print("Raw data files are present and match the pinned checksums.")
+
+
+def validate_raw_data_schema():
+    expected = [
+        ("data/raw/voting/HoC-GE2019-results-by-constituency.xlsx", "Data", 650, ["ONS ID", "First party", "Valid votes", "BRX"], {}),
+        ("data/raw/voting/HoC-GE2024-results-by-constituency.xlsx", "Data", 650, ["ONS ID", "First party", "Valid votes", "RUK"], {}),
+        ("data/raw/mortality/pcondeathspopulations20192024.xlsx", "Table 1", 573, ["Parliamentary Constituency Code ", "ASMR"], {"skiprows": 5}),
+        ("data/raw/mortality/pcondeathspopulations20192024.xlsx", "Table 3", 575, ["Parliamentary Constituency Code ", "ASMR"], {"skiprows": 5}),
+        ("data/raw/deprivation/deprivation_2025.xlsx", "Data_constituencies", 543, ["ONSConstID", "Health deprivation and disability"], {}),
+        ("data/raw/life_expectancy/trends_in_sii.xlsx", "Sheet1", 36, ["timeperiod", "sex", "value"], {}),
+    ]
+    for rel_path, sheet_name, rows, columns, read_kwargs in expected:
+        df = pd.read_excel(PROJECT_ROOT / rel_path, sheet_name=sheet_name, **read_kwargs)
+        if len(df) != rows:
+            raise ValueError(f"{rel_path} has {len(df)} rows; expected {rows}.")
+        missing = [column for column in columns if column not in df.columns]
+        if missing:
+            raise ValueError(f"{rel_path} is missing columns: {missing}")
+
+    csv_expected = {
+        "data/raw/census/2019_health.csv": (1719, ["Westminster Parliamentary constituencies Code", "General health (3 categories)", "Observation"]),
+        "data/raw/census/2024_health.csv": (1725, ["Post-2019 Westminster Parliamentary constituencies Code", "General health (3 categories)", "Observation"]),
+        "data/raw/deprivation/File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv": (32844, ["LSOA code (2011)", "Health Deprivation and Disability Score"]),
+        "data/raw/life_expectancy/HID_data_Life expectancy and mortality.csv": (50346, ["Indicator", "Category", "Time period", "Value"]),
+    }
+    for rel_path, (rows, columns) in csv_expected.items():
+        df = pd.read_csv(PROJECT_ROOT / rel_path)
+        if len(df) != rows:
+            raise ValueError(f"{rel_path} has {len(df)} rows; expected {rows}.")
+        missing = [column for column in columns if column not in df.columns]
+        if missing:
+            raise ValueError(f"{rel_path} is missing columns: {missing}")
+
+    census_workbooks = {
+        "data/raw/census/2019_disability.xlsx": (1719, "Westminster Parliamentary constituencies Code", "Disability (3 categories)"),
+        "data/raw/census/2019_unpaid_care.xlsx": (2865, "Westminster Parliamentary constituencies Code", "Unpaid care (5 categories)"),
+        "data/raw/census/2024_disability.xlsx": (1725, "Post-2019 Westminster Parliamentary constituencies Code", "Disability (3 categories)"),
+        "data/raw/census/2024_unpaid_care.xlsx": (2875, "Post-2019 Westminster Parliamentary constituencies Code", "Unpaid care (5 categories)"),
+    }
+    for rel_path, (rows, code_col, category_col) in census_workbooks.items():
+        df = pd.read_excel(PROJECT_ROOT / rel_path, sheet_name="Dataset")
+        if len(df) != rows:
+            raise ValueError(f"{rel_path} has {len(df)} rows; expected {rows}.")
+        missing = [column for column in [code_col, category_col, "Observation"] if column not in df.columns]
+        if missing:
+            raise ValueError(f"{rel_path} is missing columns: {missing}")
+
+    shapefiles = {
+        "data/shapefile/2019/WPC_Dec_2019_GCB_UK.shp": (650, ["pcon19cd", "pcon19nm"]),
+        "data/shapefile/2024/PCON_JULY_2024_UK_BFC.shp": (650, ["PCON24CD", "PCON24NM"]),
+    }
+    for rel_path, (rows, columns) in shapefiles.items():
+        gdf = gpd.read_file(PROJECT_ROOT / rel_path)
+        if len(gdf) != rows:
+            raise ValueError(f"{rel_path} has {len(gdf)} rows; expected {rows}.")
+        missing = [column for column in columns if column not in gdf.columns]
+        if missing:
+            raise ValueError(f"{rel_path} is missing columns: {missing}")
+
+
+def raw_data_sources_markdown(sources=None, include_shapefile_components=True):
+    sources = RAW_DATA_SOURCES if sources is None else sources
+    shapefile_sources = {
+        "data/shapefile/2019/": "https://geoportal.statistics.gov.uk/datasets/ons::wpc-dec-2019-generalised-clipped-boundaries-uk",
+        "data/shapefile/2024/": "https://geoportal.statistics.gov.uk/datasets/ons::pcon-july-2024-boundaries-uk-bfc",
+    }
+    rows = [
+        "| Dataset | Pinned local file | Source | Data href or fetch recipe | SHA256 |",
+        "|---|---|---|---|---|",
+    ]
+    for spec in sources:
+        label = spec["path"].split("/")[-1]
+        source = spec.get("source")
+        source_link = f"[source]({source})" if source else ""
+        download = spec.get("download")
+        if isinstance(download, str) and download.startswith("arcgis:"):
+            data_href = download
+        elif isinstance(download, str) and download.startswith("ons_filter_output:"):
+            _, output_id, filetype = download.split(":")
+            data_href = (
+                f"[ONS filter output](https://api.beta.ons.gov.uk/v1/filter-outputs/{output_id}) "
+                f"`{filetype}`"
+            )
+        elif isinstance(download, str) and download.startswith("ons_custom_filter:"):
+            data_href = f"`{download}`"
+        elif download:
+            data_href = f"[data file]({download})"
+        else:
+            data_href = "pinned local file"
+        rows.append(
+            f"| {label} | `{spec['path']}` | {source_link} | {data_href} | `{spec['sha256']}` |"
+        )
+    if include_shapefile_components:
+        for path, (sha256, _) in RAW_DATA_SOURCE_EXTRA_FILES.items():
+            source = next(
+                source for prefix, source in shapefile_sources.items() if path.startswith(prefix)
+            )
+            rows.append(
+                f"| {path.split('/')[-1]} | `{path}` | [source]({source}) | pinned local file | `{sha256}` |"
+            )
+    return "\n".join(rows)
+
+
+def main_analysis_data_sources_markdown():
+    main_prefixes = (
+        "data/raw/census/",
+        "data/raw/deprivation/",
+        "data/raw/mortality/",
+        "data/raw/voting/",
+    )
+    sources = [spec for spec in RAW_DATA_SOURCES if spec["path"].startswith(main_prefixes)]
+    return raw_data_sources_markdown(sources, include_shapefile_components=False)
+
+
+def validate_summary_table_hash(table, year):
+    """Fail if the final correlation table differs from the pinned current result."""
+    key = str(year)
+    expected = EXPECTED_SUMMARY_TABLE_HASHES[key]
+    payload = table.round(12).to_csv(index=False).encode()
+    actual = hashlib.sha256(payload).hexdigest()
+    if actual != expected:
+        raise ValueError(
+            f"{year} summary correlation table hash changed: {actual}; expected {expected}."
+        )
+    print(f"{year} summary correlation table matches pinned hash {expected}.")
 
 
 def _find_column(df, candidates, label):
@@ -586,8 +1042,10 @@ def plot_scatters(df_2019, df_2024, config_list):
     )
 
     for ax, title in zip(axes, ["a.", "b.", "c.", "d."]):
+        y_min, y_max = ax.get_ylim()
+        ax.set_ylim(y_min - 0.05 * (y_max - y_min), y_max)
         ax.grid(which="both", linestyle="--", alpha=0.3)
-        ax.set_title(title, loc="left", fontsize=20, y=1.0)
+        ax.set_title(title, loc="left", fontsize=19, fontweight="bold", y=1.0)
 
     annotate_pos = "lower right" if party_column == "Lab PC" else "lower left"
     correlation_specs = [
@@ -597,14 +1055,22 @@ def plot_scatters(df_2019, df_2024, config_list):
         (ax4, df_2024, "ASMR_m", 2024, "M", 3),
     ]
     for ax, df, asmr_column, year, sex, decimals in correlation_specs:
-        r, p = pearsonr(df[party_column], df[asmr_column])
-        r = np.round(r, decimals)
-        at = AnchoredText(r"$r$ = " + str(r), prop=dict(size=13), frameon=True, loc=annotate_pos)
+        pair_df = df[[party_column, asmr_column]].dropna()
+        pearson_r, pearson_p = pearsonr(pair_df[party_column], pair_df[asmr_column])
+        spearman_rho, spearman_p = spearmanr(pair_df[party_column], pair_df[asmr_column])
+        pearson_r = f"{pearson_r:.{decimals}f}"
+        spearman_rho = f"{spearman_rho:.{decimals}f}"
+        annotation_text = (
+            r"Spearman $\rho$ = " + spearman_rho + "\n"
+            r"Pearson $r$ = " + pearson_r
+        )
+        at = AnchoredText(annotation_text, prop=dict(size=9), frameon=True, loc=annotate_pos)
         at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
         ax.add_artist(at)
         print(
             f"{year}: {party_label} vote share vs ASMR ({sex}) "
-            f"pearsons r: {r}, p-value {p}"
+            f"Spearman rho: {spearman_rho}, p-value {spearman_p}; "
+            f"Pearson r: {pearson_r}, p-value {pearson_p}"
         )
 
     if annotate_leaders:
@@ -623,14 +1089,14 @@ def _annotate_scatter_leaders(ax1, ax2, ax3, ax4, df_2019, df_2024):
     sunak = df_2024[df_2024["Constituency name"].str.contains("Richmond", regex=False)]
 
     leader_specs = [
-        (ax1, johnson, "Uxbridge and\nSouth Ruislip", "ASMR_f", (-0.2, 150), "arc3,rad=.45"),
-        (ax1, corbyn, "Islington North", "ASMR_f", (0, 255), "arc3,rad=-.45"),
-        (ax2, johnson, "Uxbridge and\nSouth Ruislip", "ASMR_m", (-0.175, 340), "arc3,rad=.45"),
-        (ax2, corbyn, "Islington North", "ASMR_m", (0, 320), "arc3,rad=-.45"),
-        (ax3, starmer, "Holborn and\nSt Pancras", "ASMR_f", (0.15, 225), "arc3,rad=-.45"),
-        (ax3, sunak, "Richmond and\nNorthallerton", "ASMR_f", (-0.05, 260), "arc3,rad=.45"),
-        (ax4, starmer, "Holborn and\nSt Pancras", "ASMR_m", (0.2, 315), "arc3,rad=-.45"),
-        (ax4, sunak, "Richmond and\nNorthallerton", "ASMR_m", (-0.05, 300), "arc3,rad=.45"),
+        (ax1, johnson, "Uxbridge and\nSouth Ruislip", "ASMR_f", (-0.25, 300), "arc3,rad=.45"),
+        (ax1, corbyn, "Islington North", "ASMR_f", (0.15, 500), "arc3,rad=-.45"),
+        (ax2, johnson, "Uxbridge and\nSouth Ruislip", "ASMR_m", (-0.2, 340), "arc3,rad=.45"),
+        (ax2, corbyn, "Islington North", "ASMR_m", (0.125, 500), "arc3,rad=-.45"),
+        (ax3, starmer, "Holborn\nand\nSt Pancras", "ASMR_f", (0.19, 60), "arc3,rad=-.45"),
+        (ax3, sunak, "Richmond and\nNorthallerton", "ASMR_f", (-0.1, 400), "arc3,rad=.45"),
+        (ax4, starmer, "Holborn\nand\nSt Pancras", "ASMR_m", (0.2, 315), "arc3,rad=-.45"),
+        (ax4, sunak, "Richmond and\nNorthallerton", "ASMR_m", (-0.1, 600), "arc3,rad=.45"),
     ]
     for ax, df, label, asmr_column, offset, connectionstyle in leader_specs:
         if df.empty:
@@ -763,7 +1229,7 @@ class BivariateChoroplethPlotter:
     def plot_inset_legend(self, ax, yaxis_label, xaxis_label):
         ax_inset = ax.inset_axes([0.0125, 0.275, 0.3, 0.3])
         ax_inset.set_aspect("equal", adjustable="box")
-        x_ticks = [self.format_tick_label(value) for value in self.x_edges]
+        x_ticks = [self.format_tick_label(value, significant_digits=1) for value in self.x_edges]
         y_ticks = [self.format_tick_label(value) for value in self.y_edges]
 
         for i in range(self.num_groups):
@@ -786,9 +1252,11 @@ class BivariateChoroplethPlotter:
         ax_inset.set_yticks(list(range(self.num_groups + 1)), y_ticks, fontsize=15)
         ax_inset.set_ylabel(yaxis_label, fontsize=16)
 
-    def format_tick_label(self, value):
+    def format_tick_label(self, value, significant_digits=None):
         if value != value:
             return ""
+        if significant_digits is not None:
+            return f"{value:.{significant_digits}g}"
         if abs(value) < 1:
             return f"{value:.2f}"
         return f"{value:.0f}"
@@ -802,7 +1270,7 @@ def _quantile_edges(*columns, num_groups=5):
 def _set_map_axis(ax, title):
     ax.set_xlim(125000, 660000)
     ax.set_ylim(10000, 675000)
-    ax.set_title(title, fontsize=35, loc="left", y=0.965, x=0)
+    ax.set_title(title, fontsize=35, fontweight="bold", loc="left", y=0.965, x=0)
     sns.despine(ax=ax, left=True, right=True, top=True, bottom=True)
     ax.annotate(
         "N",
@@ -861,7 +1329,7 @@ def _annotate_map_leaders(axs, df_gpd_2019, df_gpd_2024):
         df_gpd_2019["Constituency name"].str.contains("Chorley", regex=False, na=False)
     ]
 
-    for ax in [axs[0, 1], axs[1, 1]]:
+    for ax in [axs[1, 0], axs[1, 1]]:
         _circle_and_label(
             ax,
             sunak,
@@ -887,14 +1355,14 @@ def _annotate_map_leaders(axs, df_gpd_2019, df_gpd_2024):
             "arc3,rad=.45",
         )
 
-    for ax in [axs[0, 0], axs[1, 0]]:
+    for ax in [axs[0, 0], axs[0, 1]]:
         _circle_and_label(
             ax,
             johnson,
             "Uxbridge and\nSouth Ruislip\n(Boris Johnson)",
-            lambda center: (center.x + 120000, center.y + 200000),
+            lambda center: (center.x + 120000, center.y + 225000),
             1,
-            "arc3,rad=-.225",
+            "arc3,rad=.35",
         )
         _circle_and_label(
             ax,
@@ -966,21 +1434,21 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
     _set_map_axis(axs[0, 0], "a.")
 
     df_gpd_2019["column2"] = df_gpd_2019["column3"]
-    plotter_disability.plot_bivariate_choropleth(df_gpd_2019, ax=axs[1, 0])
+    plotter_disability.plot_bivariate_choropleth(df_gpd_2019, ax=axs[0, 1])
     plotter_disability.plot_inset_legend(
-        axs[1, 0],
+        axs[0, 1],
         "Proportion\nDisabled (2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[1, 0], "c.")
+    _set_map_axis(axs[0, 1], "b.")
 
-    plotter_health.plot_bivariate_choropleth(df_gpd_2024, ax=axs[0, 1])
+    plotter_health.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 0])
     plotter_health.plot_inset_legend(
-        axs[0, 1],
+        axs[1, 0],
         "Proportion Not\nGood Health (2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[0, 1], "b.")
+    _set_map_axis(axs[1, 0], "c.")
 
     df_gpd_2024["column2"] = df_gpd_2024["column3"]
     plotter_disability.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 1])
@@ -1038,21 +1506,21 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
     _set_map_axis(axs[0, 0], "a.")
 
     df_gpd_2019["column2"] = df_gpd_2019["column3"]
-    plotter_m.plot_bivariate_choropleth(df_gpd_2019, ax=axs[1, 0])
+    plotter_m.plot_bivariate_choropleth(df_gpd_2019, ax=axs[0, 1])
     plotter_m.plot_inset_legend(
-        axs[1, 0],
+        axs[0, 1],
         "ASMR\n(Male, 2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[1, 0], "c.")
+    _set_map_axis(axs[0, 1], "b.")
 
-    plotter_f.plot_bivariate_choropleth(df_gpd_2024, ax=axs[0, 1])
+    plotter_f.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 0])
     plotter_f.plot_inset_legend(
-        axs[0, 1],
+        axs[1, 0],
         "ASMR\n(Female, 2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[0, 1], "b.")
+    _set_map_axis(axs[1, 0], "c.")
 
     df_gpd_2024["column2"] = df_gpd_2024["column3"]
     plotter_m.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 1])
