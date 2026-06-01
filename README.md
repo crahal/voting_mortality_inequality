@@ -41,9 +41,15 @@ requirements.txt     Python package requirements
 
 ## Data
 
-The notebook expects the raw data to be present under `data/raw/` and
-constituency boundary files under `data/shapefile/`. The currently used inputs
-are:
+The notebook records the source hrefs and pinned SHA-256 checksums for every raw
+input before the analysis runs. `ensure_raw_data()` downloads missing files when
+a stable programmatic URL is available, then verifies all raw data files by file
+size, checksum, and basic schema checks. Some source workbooks are custom or
+browser-gated downloads, so those files must be present locally and match the
+pinned checksums exactly.
+
+The raw inputs live under `data/raw/`, and constituency boundary files live under
+`data/shapefile/`. The currently used inputs are:
 
 - House of Commons Library constituency results for the 2019 and 2024 UK
   General Elections.
@@ -53,8 +59,8 @@ are:
 - ONS/OHID life-expectancy inequality data.
 - 2019 and 2024 parliamentary constituency shapefiles.
 
-Large raw data files are kept separate from the analysis code so that the
-notebook can be rerun without changing source files.
+Large raw data files are kept separate from the analysis code; the notebook
+fails early if a missing or changed input would alter the analysis.
 
 ## Outputs
 
