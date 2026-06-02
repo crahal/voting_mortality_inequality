@@ -1,4 +1,4 @@
-<img src="./assets/header.png" width="700" alt="Bivariate choropleth map header" />
+<img src="./assets/header_asmr.png" width="700" alt="Bivariate choropleth map header" />
 
 # Voting Patterns, Mortality, and Health Inequalities in England
 
