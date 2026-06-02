@@ -6,6 +6,7 @@
 [![Generic badge](https://img.shields.io/badge/Python-3.11-red.svg)](https://shields.io/)
 [![Generic badge](https://img.shields.io/badge/R-brightgreen.svg)](https://shields.io/)
 [![Generic badge](https://img.shields.io/badge/License-GNU3.0-purple.svg)](https://shields.io/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20508899.svg)](https://doi.org/10.5281/zenodo.20508899)
 
 This repository contains a reproducible analysis of voting patterns, mortality, health, disability, and deprivation across English  parliamentary constituencies. It replicates and extends the constituency-level logic of Smith and Dorling's 1996 BMJ analysis, using the 2019 and 2024 UK General Elections.
 
