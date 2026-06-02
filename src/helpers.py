@@ -239,6 +239,7 @@ def _party_metadata_from_code_or_column(value, fallback_label=None):
 def _save_figure(fig, stem):
     fig.savefig(FIGURES_DIR / f"{stem}.pdf", bbox_inches="tight")
     fig.savefig(FIGURES_DIR / f"{stem}.svg", bbox_inches="tight")
+    fig.savefig(FIGURES_DIR / f"{stem}.png", bbox_inches="tight", dpi=800)
 
 
 def _sha256(path):
