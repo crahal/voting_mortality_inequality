@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    verify_results.validate_analysis_environment()
     path = ROOT / "src/analysis.ipynb"
     notebook = nbformat.read(path, as_version=4)
     manager = KernelManager(kernel_name="python3")
@@ -32,6 +33,11 @@ def main():
             manager.shutdown_kernel(now=True)
     verify_results.main([])
     verify_results.verify_exported_robustness()
+    notebook.metadata.kernelspec = {
+        "display_name": "Voting mortality (pinned)",
+        "language": "python",
+        "name": "voting-mortality-inequality",
+    }
     nbformat.write(notebook, path)
     print("PASS: every notebook cell executed and correlation/p-value/N hashes match.")
 

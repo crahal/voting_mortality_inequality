@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from analysis_environment import validate_analysis_environment
 import helpers
 
 
@@ -40,6 +41,7 @@ def verify_exported_robustness():
 
 def main(argv=None):
     argparse.ArgumentParser(description=__doc__).parse_args(argv)
+    validate_analysis_environment()
     baseline = json.loads((ROOT / "tests/fixtures/summary_hashes.json").read_text())
     helpers.ensure_raw_data(download=False, verify=True)
     for year in [2019, 2024]:

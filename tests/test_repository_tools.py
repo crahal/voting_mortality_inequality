@@ -30,9 +30,11 @@ class RepositoryCheckTests(unittest.TestCase):
 
     def test_dependency_constraints_are_valid_exact_pins(self):
         from packaging.requirements import Requirement
+        from packaging.utils import canonicalize_name
 
         root = Path(__file__).resolve().parents[1]
         lines = (root / "requirements-constraints.txt").read_text().splitlines()
+        constraints = {}
         for line in lines:
             if not line.strip() or line.startswith("#"):
                 continue
@@ -40,7 +42,25 @@ class RepositoryCheckTests(unittest.TestCase):
             self.assertIsNone(requirement.url)
             self.assertEqual(len(requirement.specifier), 1)
             self.assertEqual(next(iter(requirement.specifier)).operator, "==")
+            name = canonicalize_name(requirement.name)
+            self.assertNotIn(name, constraints)
+            constraints[name] = requirement.specifier
         self.assertIn("-c requirements-constraints.txt", (root / "requirements.txt").read_text())
+        for filename in ["requirements.txt", "requirements-dev.txt"]:
+            declared = set()
+            for line in (root / filename).read_text().splitlines():
+                if not line.strip() or line.startswith(("#", "-")):
+                    continue
+                requirement = Requirement(line)
+                name = canonicalize_name(requirement.name)
+                with self.subTest(filename=filename, dependency=name):
+                    self.assertIsNone(requirement.url)
+                    self.assertNotIn(name, declared)
+                    self.assertIn(name, constraints)
+                    self.assertEqual(requirement.specifier, constraints[name])
+                declared.add(name)
+            if filename == "requirements.txt":
+                self.assertTrue({"ipython", "jupyter-client", "nbclient", "nbformat", "ipykernel"} <= declared)
 
     def test_markdown_and_html_links_are_parsed_without_code_examples(self):
         text = '[Guide](docs/guide.md) ![Figure](assets/plot.png) <img src="assets/header.png" />\n\n'
@@ -103,6 +123,7 @@ class NotebookRunnerTests(unittest.TestCase):
                     patch.object(run_analysis.nbformat, "write") as write, \
                     patch.object(run_analysis, "KernelManager") as manager_class, \
                     patch.object(run_analysis, "NotebookClient") as client_class, \
+                    patch.object(verify_results, "validate_analysis_environment") as environment, \
                     patch.object(verify_results, "main") as verify, \
                     patch.object(verify_results, "verify_exported_robustness") as robustness:
                 manager = manager_class.return_value
@@ -119,7 +140,22 @@ class NotebookRunnerTests(unittest.TestCase):
                     verify.assert_called_once_with([])
                     robustness.assert_called_once_with()
                 self.assertEqual(manager.kernel_spec.argv[0], sys.executable)
+                if not failure:
+                    self.assertEqual(write.call_args.args[0].metadata.kernelspec.name,
+                                     "voting-mortality-inequality")
                 manager.shutdown_kernel.assert_called_once_with(now=True)
+                environment.assert_called_once_with()
+
+    def test_wrong_environment_stops_runner_and_verifier_before_loading_any_data(self):
+        with patch.object(verify_results, "validate_analysis_environment", side_effect=RuntimeError("wrong kernel")), \
+                patch.object(run_analysis.nbformat, "read") as read, \
+                patch.object(verify_results.helpers, "ensure_raw_data") as fetch:
+            with self.assertRaisesRegex(RuntimeError, "wrong kernel"):
+                run_analysis.main()
+            with self.assertRaisesRegex(RuntimeError, "wrong kernel"):
+                verify_results.main([])
+            read.assert_not_called()
+            fetch.assert_not_called()
 
 
 class ResultHashTests(unittest.TestCase):

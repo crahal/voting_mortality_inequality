@@ -14,6 +14,16 @@ automatically by `requirements.txt`. It does not force Linux-only extras onto
 other platforms. Native-library/platform differences are still possible; the
 numerical checks must pass before claiming an equivalent reproduction.
 
+The first notebook cell and both analysis/verification commands check the runtime
+versions against `requirements.txt` before loading data. A mismatch lists the
+packages and active Python executable; switch to the pinned kernel and restart.
+
+From the repository root in a VS Code terminal, run the notebook directly with
+`.venv/bin/python scripts/run_analysis.py`. This uses the verified environment
+without selecting a notebook kernel or changing the terminal's default Python.
+Saved-file messages and diagnostic file paths are relative to the current working
+directory (`../output/...` inside the notebook, `output/...` at the repository root).
+
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
@@ -75,6 +85,11 @@ fixtures. No network access is required once verified local inputs are present.
 the serialized coefficient and p-value tables, including their `N` columns.
 The serialization matches the notebook's existing hash convention:
 `table.round(12).to_csv(index=False)`, encoded as UTF-8 and hashed with SHA-256.
+The legacy summary tables have object-typed numeric columns, which pandas does
+not round with this call. These preserved reference hashes therefore also detect
+floating-point differences at full serialization precision. A different NumPy
+version can trigger a mismatch even when published coefficients are unchanged;
+verify the environment and actual values rather than replacing the hashes.
 
 The baseline includes the additional 2021 outcomes and separate checks for the
 original non-2021 rows. The latter were independently compared against commits
@@ -115,6 +130,20 @@ An interactive editor can also run all notebook cells in order, using the
 project environment as its Python kernel. Do not use a globally installed
 kernel with different scientific dependencies by accident.
 
+After activating `.venv`, register an explicitly named kernel:
+
+```bash
+python -m pip check
+python -m ipykernel install --user --name voting-mortality-inequality --display-name "Voting mortality (pinned)"
+```
+
+Select **Voting mortality (pinned)** in the notebook, restart its kernel and run
+the cells in order. Activating an environment in a terminal does not switch an
+already-running notebook kernel. If you move the repository, register the kernel
+again so its Python path points to the new location.
+The notebook's saved kernel metadata now names this kernel explicitly. The
+command-line runner instead uses the Python executable that launched it.
+
 ## Troubleshooting
 
 | Symptom | Action |
@@ -126,6 +155,7 @@ kernel with different scientific dependencies by accident.
 | Cannot check ONS online | The warning identifies the failed check. An intact local snapshot remains usable. |
 | Correlation or p-value hash mismatch | Check input identity, Python/dependency versions, exclusions and boundary joins. Treat this as a potential analytical change. |
 | Notebook kernel unavailable | Activate the environment and install its requirements, which include `ipykernel`. |
+| pip conflicts involving unrelated packages, or NumPy/scikit-learn versions above the pinned versions | Use the dedicated `.venv`, install `requirements.txt` there and select its notebook kernel. Do not upgrade individual scientific packages in a shared Anaconda environment or change the verified pins to satisfy another project. |
 | Different figure bytes with unchanged statistics | Check fonts, renderer versions and file metadata; PDF/SVG/PNG bytes are not numerical-result hashes. |
 
 For a reproducible report, record `git rev-parse HEAD`, `python --version`, the

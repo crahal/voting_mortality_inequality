@@ -1,5 +1,8 @@
 # Python 3.12; versions used for the verified analysis.
+# Install in a dedicated virtual environment; preserve these pins for reproducibility.
+# Helvetica fonts require a separate licensed installation; see docs/reproducibility.md.
 -c requirements-constraints.txt
+packaging==26.3
 geopandas==1.1.1
 matplotlib==3.10.9
 numpy==1.26.4
@@ -25,3 +28,5 @@ nbconvert==7.16.6
 nbformat==5.10.4
 nbclient==0.10.2
 ipykernel==7.0.1
+ipython==9.17.1
+jupyter_client==8.10.0
