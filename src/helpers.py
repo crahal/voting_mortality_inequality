@@ -1862,7 +1862,7 @@ def plot_scatters(df_2019, df_2024, config_list):
     print("The length of the 2024 data going into the scatters is: ", len(df_2024))
 
     fig = plt.figure(figsize=(12, 10))
-    gs = grid_spec.GridSpec(2, 2)
+    gs = grid_spec.GridSpec(2, 2, wspace=0.24, hspace=0.26)
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1])
     ax3 = fig.add_subplot(gs[1, 0])
@@ -1878,10 +1878,11 @@ def plot_scatters(df_2019, df_2024, config_list):
         fallback_label,
     )
 
-    ax1.scatter(df_2019[party_column], df_2019["ASMR_f"], color=df_2019["color"], edgecolor="k")
-    ax2.scatter(df_2019[party_column], df_2019["ASMR_m"], color=df_2019["color"], edgecolor="k")
-    ax3.scatter(df_2024[party_column], df_2024["ASMR_f"], color=df_2024["color"], edgecolor="k")
-    ax4.scatter(df_2024[party_column], df_2024["ASMR_m"], color=df_2024["color"], edgecolor="k")
+    point_style = dict(edgecolor="#333333", linewidths=0.65)
+    ax1.scatter(df_2019[party_column], df_2019["ASMR_f"], color=df_2019["color"], **point_style)
+    ax2.scatter(df_2019[party_column], df_2019["ASMR_m"], color=df_2019["color"], **point_style)
+    ax3.scatter(df_2024[party_column], df_2024["ASMR_f"], color=df_2024["color"], **point_style)
+    ax4.scatter(df_2024[party_column], df_2024["ASMR_m"], color=df_2024["color"], **point_style)
 
     ax1.set_ylabel("ASMR (Female)", fontsize=14)
     ax2.set_ylabel("ASMR (Male)", fontsize=14)
@@ -1893,25 +1894,31 @@ def plot_scatters(df_2019, df_2024, config_list):
     ax4.set_xlabel(f"{axis_label} (2024)", fontsize=14)
 
     legend_elements = [
-        Patch(facecolor=color_mapping["Con"], edgecolor=(0, 0, 0, 1), label="Conservative"),
-        Patch(facecolor=color_mapping["Lab"], edgecolor=(0, 0, 0, 1), label="Labour"),
-        Patch(facecolor=color_mapping["Other"], edgecolor=(0, 0, 0, 1), label="Other"),
+        Patch(facecolor=color_mapping["Con"], edgecolor="#333333", linewidth=0.65, label="Conservative"),
+        Patch(facecolor=color_mapping["Lab"], edgecolor="#333333", linewidth=0.65, label="Labour"),
+        Patch(facecolor=color_mapping["Other"], edgecolor="#333333", linewidth=0.65, label="Other"),
     ]
-    ax1.legend(
+    legend = ax1.legend(
         handles=legend_elements,
         loc="upper left" if party_column == "Lab PC" else "upper right",
         frameon=True,
         fontsize=9,
         framealpha=1,
         facecolor="w",
-        edgecolor=(0, 0, 0, 1),
+        edgecolor="black",
         ncols=1,
     )
+    legend.get_frame().set_linewidth(0.7)
 
     for ax, title in zip(axes, ["a.", "b.", "c.", "d."]):
         y_min, y_max = ax.get_ylim()
         ax.set_ylim(y_min - 0.05 * (y_max - y_min), y_max)
-        ax.grid(which="both", linestyle="--", alpha=0.3)
+        ax.set_axisbelow(True)
+        ax.grid(which="both", linestyle="--", color="#e6e6e6", linewidth=0.6)
+        ax.tick_params(axis="both", which="major", length=3, width=0.7, color="#555555")
+        for spine in ["left", "bottom"]:
+            ax.spines[spine].set_color("#555555")
+            ax.spines[spine].set_linewidth(0.7)
         ax.set_title(title, loc="left", fontsize=19, fontweight="bold", y=1.0)
 
     annotate_pos = "lower right" if party_column == "Lab PC" else "lower left"
@@ -1933,6 +1940,9 @@ def plot_scatters(df_2019, df_2024, config_list):
         )
         at = AnchoredText(annotation_text, prop=dict(size=9), frameon=True, loc=annotate_pos)
         at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+        at.patch.set_edgecolor("black")
+        at.patch.set_linewidth(0.7)
+        at.patch.set_facecolor("white")
         ax.add_artist(at)
         print(
             f"{year}: {party_label} vote share vs ASMR ({sex}) "
@@ -1979,9 +1989,9 @@ def _annotate_scatter_leaders(ax1, ax2, ax3, ax4, df_2019, df_2024):
             arrowprops=dict(
                 arrowstyle="->",
                 connectionstyle=connectionstyle,
-                color="black",
-                mutation_scale=30,
-                lw=1.5,
+                color="#333333",
+                mutation_scale=24,
+                lw=1.1,
             ),
         )
 
