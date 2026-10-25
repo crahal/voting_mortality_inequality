@@ -18,6 +18,20 @@ import verify_results
 
 
 class RepositoryCheckTests(unittest.TestCase):
+    def test_dependency_constraints_are_valid_exact_pins(self):
+        from packaging.requirements import Requirement
+
+        root = Path(__file__).resolve().parents[1]
+        lines = (root / "requirements-constraints.txt").read_text().splitlines()
+        for line in lines:
+            if not line.strip() or line.startswith("#"):
+                continue
+            requirement = Requirement(line)
+            self.assertIsNone(requirement.url)
+            self.assertEqual(len(requirement.specifier), 1)
+            self.assertEqual(next(iter(requirement.specifier)).operator, "==")
+        self.assertIn("-c requirements-constraints.txt", (root / "requirements.txt").read_text())
+
     def test_markdown_and_html_links_are_parsed_without_code_examples(self):
         text = '[Guide](docs/guide.md) ![Figure](assets/plot.png) <img src="assets/header.png" />\n\n'
         text += '```text\n[Not a link](missing.txt)\n```\n'

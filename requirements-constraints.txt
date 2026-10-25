@@ -1,7 +1,6 @@
 # Reference Python 3.12.7/Linux environment, verified against the original analysis.
 # Constraints pin transitive versions without requiring platform-specific extras.
 # Update only after rerunning input and numerical regression checks.
-WARNING: The directory '/home/jinx/.cache/pip' or its parent directory is not owned or is not writable by the current user. The cache has been disabled. Check the permissions and owner of that directory. If executing pip with sudo, you should use sudo's -H flag.
 asttokens==3.0.2
 attrs==26.1.0
 beautifulsoup4==4.15.0
