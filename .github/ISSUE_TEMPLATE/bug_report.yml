@@ -1,0 +1,28 @@
+name: Reproduction or software problem
+description: Report a failed check, data download or notebook execution.
+body:
+  - type: markdown
+    attributes:
+      value: Please do not attach raw datasets, credentials or personal information.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the command or notebook section and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python version, commit hash and installation command.
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error or unexpected result
+      description: Include the traceback or checksum mismatch, with sensitive details removed.
+      render: text
+    validations:
+      required: true

@@ -1,0 +1,12 @@
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.cff text eol=lf
+Makefile text eol=lf
+
+output/** linguist-generated=true
+assets/** linguist-vendored=true
+*.png binary
+*.pdf binary
+*.docx binary

@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: >-
+  Cite the archived release below. For later changes, also report the Git commit
+  used; the working tree is not necessarily identical to the archived release.
+type: software
+title: >-
+  Replication Materials for "Voting Patterns, Mortality, and Health Inequalities
+  in England: A replication and extension of Smith and Dorling (1996)"
+authors:
+  - name: crahal
+doi: 10.5281/zenodo.20508899
+version: v1.0.1
+date-released: 2026-06-02
+repository-code: https://github.com/crahal/voting_mortality_inequality
+url: https://zenodo.org/records/20508899
+keywords:
+  - health inequalities
+  - mortality
+  - elections
+  - England
+  - reproducible research

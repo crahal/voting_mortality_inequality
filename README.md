@@ -1,136 +1,146 @@
-<img src="./assets/header_asmr.png" width="700" alt="Bivariate choropleth map header" />
-
 # Voting Patterns, Mortality, and Health Inequalities in England
 
-![coverage](https://img.shields.io/badge/Purpose-Research-yellow)
-[![Generic badge](https://img.shields.io/badge/Python-3.11-red.svg)](https://shields.io/)
-[![Generic badge](https://img.shields.io/badge/R-brightgreen.svg)](https://shields.io/)
-[![Generic badge](https://img.shields.io/badge/License-GNU3.0-purple.svg)](https://shields.io/)
+[![Checks](https://github.com/crahal/voting_mortality_inequality/actions/workflows/checks.yml/badge.svg)](https://github.com/crahal/voting_mortality_inequality/actions/workflows/checks.yml)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB)](requirements.txt)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20508899.svg)](https://doi.org/10.5281/zenodo.20508899)
 
-This repository contains a reproducible analysis of voting patterns, mortality, health, disability, and deprivation across English  parliamentary constituencies. It replicates and extends the constituency-level logic of Smith and Dorling's 1996 BMJ analysis, using the 2019 and 2024 UK General Elections.
+Research code and publication outputs examining associations between voting,
+mortality and health inequalities across English parliamentary constituencies.
+The analysis replicates and extends the constituency-level approach of Smith
+and Dorling's 1996 BMJ study using the 2019 and 2024 general elections.
 
-The project is descriptive. It estimates and visualises associations between constituency-level voting patterns and health-related outcomes; it does not make causal claims about voting behaviour or health.
+**[Read the analysis](src/analysis.ipynb) | [Figures](output/figures) | [Tables](output/tables) | [Data sources](docs/data.md) | [Reproduce results](docs/reproducibility.md)**
 
-## Analysis
+<img src="assets/header_asmr.png" width="760" alt="Bivariate constituency maps illustrating the relationship between voting and age-standardised mortality in England" />
 
-The main analysis is in [src/analysis.ipynb](src/analysis.ipynb). The notebook is kept as an orchestration layer: data loading, cleaning, plotting, and summary table functions live in [src/helpers.py](src/helpers.py).
+## Research Scope
 
-The workflow:
+| Component | Coverage |
+|---|---|
+| Elections | Constituency vote shares and voter turnout, 2019 and 2024 |
+| Main mortality outcomes | Female and male ASMR for deaths registered in 2019 and 2024 |
+| Additional mortality outcome | Female and male **2021 premature ASMR**, compared with **2019 voting only** |
+| Census outcomes | Census 2021 general health, disability and unpaid care, on each election's boundaries |
+| Deprivation | Health Deprivation and Disability: 2019 LSOA aggregation and the 2025 constituency release |
+| Statistics | Spearman and Pearson correlations, two-sided p-values and sample sizes |
+| Robustness | Positive-vote comparisons; regional adjustment, Moran's I and spatial-error models |
 
-1. Builds 2019 and 2024 constituency-level datasets for England.
-2. Merges election results with ONS age-standardised mortality rates (ASMR).
-3. Adds 2021 Census measures of health, disability, and unpaid care.
-4. Adds Health Deprivation and Disability ranks.
-5. Produces scatterplots, bivariate choropleths, and correlation tables.
-6. Adds national temporal context using life-expectancy inequality data.
+This is a **descriptive, ecological analysis**, not a causal analysis or an
+individual-level study. The 2021 premature-ASMR outcome is distinct from the
+main ASMR series; it is not reassigned to the revised 2024 boundaries.
+Deprivation ranks run in the opposite direction to mortality and adverse-health
+prevalence: a higher rank indicates **less** deprivation.
+
+## Start Here
+
+To inspect the findings, open the [executed notebook](src/analysis.ipynb) or the
+publication files below. No local data or software installation is needed.
+
+| Output | Files |
+|---|---|
+| Labour vote share and mortality | [Scatter PDF](output/figures/labour_asmr_scatter.pdf), [map PDF](output/figures/labour_asmr_bivariate_choropleth.pdf) |
+| Health and disability | [Bivariate map PDF](output/figures/labour_census_health_disability_bivariate_choropleth.pdf) |
+| Main manuscript table | [Word document](output/tables/correlation_and_p_value_tables.docx) |
+| Full correlations, including unpaid care and deprivation | [Word document](output/tables/full_correlation_and_p_value_table.docx) |
+
+Figures are exported as **PDF, SVG and 800-dpi PNG**. The figure directory also
+contains the Conservative, Liberal Democrat and turnout comparisons. Section 4
+of the notebook displays the coefficient and p-value tables inline.
+
+## Quick Start
+
+Use **Python 3.12**. The pinned scientific packages match the environment used
+for the verified results; they are not a request to upgrade an existing environment.
+
+```bash
+git clone https://github.com/crahal/voting_mortality_inequality.git
+cd voting_mortality_inequality
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python scripts/check_repository.py
+python -m unittest discover -s tests -v
+```
+
+On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell.
+Use `requirements.txt` instead if you only need the analysis environment.
+
+### Reproduce the Analysis
+
+Raw data are **not redistributed in this repository**. Notebook startup fetches
+all required inputs, including both boundary datasets, using Python `requests`.
+No browser, sign-in or manual file download is required. The pinned versions and
+checksums preserve the original analysis; a changed source is never silently accepted.
+
+```bash
+python scripts/run_analysis.py
+```
+
+This runs every cell with the active environment's Python kernel, downloads
+missing inputs and regenerates publication outputs, then checks the correlation,
+p-value and sample-size hashes. Running all cells in the notebook also fetches
+the data automatically. Use `python scripts/manage_data.py fetch` to fetch only,
+or `verify` and `python scripts/verify_results.py` for offline checks after download.
+See the [reproduction guide](docs/reproducibility.md) for prerequisites, checks
+and troubleshooting. Equivalent shortcuts are listed by `make help`.
+
+## Reproducibility Checks
+
+The [fresh-download audit](docs/download-audit.md) records the completed
+requests-only, empty-data run and comparison with the original local analysis.
+
+- **Input identity:** pinned file sizes, SHA-256 checksums and schema checks.
+- **Environment:** direct and transitive dependency versions pinned to the verified run.
+- **Mortality snapshots:** timestamped local copies are reused; changed ONS
+  downloads trigger a warning and never silently replace the analysis inputs.
+- **Numerical regression:** coefficient, p-value and sample-size table hashes,
+  including the pre-2021 baseline, are checked by `scripts/verify_results.py`.
+  The full runner also checks all nine robustness CSVs against their original hashes.
+- **Continuous integration:** syntax/name checks, notebook validation,
+  documentation links and synthetic-data unit tests. CI does **not** download
+  research data or claim to reproduce the full empirical analysis.
 
 ## Repository Layout
 
 ```text
-assets/              Static image assets used by the README
-data/raw/            Input datasets required by the notebook
-data/derived/        CSV files generated by the notebook
-data/shapefile/      Constituency boundary shapefiles
-output/figures/      Generated figures in PDF and SVG formats
-output/tables/       Generated manuscript tables
-src/analysis.ipynb   Main analysis notebook
-src/helpers.py       Reusable analysis and plotting functions
-requirements.txt     Python package requirements
+src/analysis.ipynb       Executed analysis and source links
+src/helpers.py          Data preparation, statistics, plotting and exports
+scripts/                Data, result-verification and repository-check commands
+tests/                  Synthetic-data tests and numerical hash fixtures
+docs/                   Data provenance and reproduction guides
+.github/                CI, dependency maintenance and contribution templates
+assets/                 README imagery
+output/figures/         Publication figures: PDF, SVG and 800-dpi PNG
+output/tables/          Manuscript and supplementary Word tables
+data/                   Local inputs, snapshots, boundaries and derived CSVs (ignored)
 ```
 
-## Data
+The notebook is the orchestration layer. Source-specific verification is in
+`election_sources.py` and `boundary_sources.py`; spatial checks are in
+`spatial_robustness.py`. Data preparation and publication exports remain in `helpers.py`.
 
-The notebook records the source hrefs and pinned SHA-256 checksums for every raw input before the analysis runs. `ensure_raw_data()`  downloads missing files when a stable programmatic URL is available, then verifies all raw data files by file size, checksum, and basic schema checks. Some source workbooks are custom or browser-gated downloads, so those files must be present locally and match the pinned checksums exactly.
+## Citation and Contributions
 
-The raw inputs live under `data/raw/`, and constituency boundary files live under `data/shapefile/`. The currently used inputs are:
+The [Zenodo archive](https://doi.org/10.5281/zenodo.20508899) describes release
+`v1.0.1`. [CITATION.cff](CITATION.cff) preserves that archive's citation metadata.
+For work based on later changes, also record the Git commit used; the current
+working tree is not necessarily the archived release.
 
-- House of Commons Library constituency results for the 2019 and 2024 UK
-  General Elections.
-- ONS parliamentary constituency death, population, and ASMR data.
-- ONS 2021 Census health, disability, and unpaid-care data.
-- English Indices of Deprivation Health Deprivation and Disability data.
-- ONS/OHID life-expectancy inequality data.
-- 2019 and 2024 parliamentary constituency shapefiles.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks and the policy for
+changes to data or results. Use the repository's
+[issue tracker](https://github.com/crahal/voting_mortality_inequality/issues)
+for software problems or questions about the analysis. Do not attach raw data.
 
-Large raw data files are kept separate from the analysis code; the notebook fails early if a missing or changed input would alter the analysis.
+## Acknowledgements and License
 
-ASMR uses the fixed, checksum-verified workbook snapshot
-`data/raw/mortality/snapshots/pcondeathspopulations20192024_20261025T083750Z.xlsx`.
-At notebook startup, `ensure_mortality_snapshot()` checks the current ONS
-download against the pinned SHA-256 and warns if it differs. The analysis
-continues to use the snapshot; an online update never replaces it. If the
-online check is unavailable, a warning is shown and the verified local copy
-is used. A missing snapshot is restored from the original local workbook or
-the download only if it matches the pinned checksum. A damaged snapshot
-stops execution. For offline use, call
-`ensure_mortality_snapshot(download=False, check_remote=False)` instead.
-The main notebook links to the snapshot and the ONS download. Local data,
-including snapshots, are ignored by Git.
+The bivariate mapping implementation builds on
+[Suzuki Shosuke's public choropleth examples](https://github.com/shosuke-13/Japan-Bivariate-Choroplethmaps).
 
-Section 4 additionally reports female and male **2021 premature ASMR** from
-[ONS release 1961](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1961numbersandagestandardisedmortalityratesforprematuredeathsbyparliamentaryconstituencyandsexin2021).
-The separately pinned snapshot is
-`data/raw/mortality/snapshots/premature_asmr_2021_20261025T085354Z.xlsx`
-(SHA-256 `0ac240f4cfd6fbf9868aab200a16a6cf04d0d88df6fe796611a3ad3e9f67f5b6`,
-79,479 bytes). `ensure_mortality_snapshot(dataset="2021_premature")`
-downloads missing data and performs the same hash-change check at startup.
-This outcome uses deaths registered in 2021 and is linked by constituency code
-to the 2019 election only. No rate is imputed for the revised 2024 boundaries.
-The existing 2019/2024 ASMR outcomes and figures are unchanged; the additional
-Spearman/Pearson coefficients and p values appear in the full supplementary
-and manuscript Word tables. Both are also displayed inline in Section 4.
+Financial support was received from the Leverhulme Trust for the Leverhulme
+Centre for Demographic Science (grant RC-2018-003), Nuffield College, and the
+Health Foundation REAL Demand Unit.
 
-## Outputs
-
-Running the notebook regenerates:
-
-- Scatterplots of vote share or turnout against female and male ASMR.
-- Bivariate choropleths for vote share or turnout against ASMR.
-- Bivariate choropleths for vote share or turnout against Census health and   disability measures.
-- A national temporal plot of life-expectancy inequality.
-- Manuscript-ready correlation tables.
-- Derived CSVs used to inspect bivariate map inputs.
-
-Generated figures are written to `output/figures/`. Generated tables are written to `output/tables/`. Generated CSVs are written to `data/derived/`.
-
-Output artifact names use lowercase snake_case consistently. Party and turnout stems are `labour`, `conservative`, `liberal_democrat`, and `turnout`; figure stems then append the analysis type, for example `labour_asmr_scatter.svg` or `conservative_census_health_disability_bivariate_choropleth.pdf`.
-
-## Environment
-
-Create and activate a Python environment, then install the requirements:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-The geospatial stack depends on `geopandas` and `shapely`; on some systems it is more reliable to install these packages through Conda or Mamba.
-
-## Running
-
-From the project root, run the notebook with Jupyter:
-
-```bash
-jupyter nbconvert --to notebook --execute --inplace src/analysis.ipynb
-```
-
-Alternatively, open `src/analysis.ipynb` in JupyterLab, Jupyter Notebook, or an editor with notebook support and run all cells.
-
-## Notes on Interpretation
-
-ASMR is age-standardised mortality rate. Higher ASMR means higher mortality and is therefore a worse health outcome.
-
-The Health Deprivation and Disability variable is a rank where `1` is the most deprived constituency. Higher rank values therefore indicate less deprivation. Its correlation signs should be interpreted in the opposite direction to ASMR, bad-health prevalence, and disability prevalence.
-
-## Acknowledgements
-
-The bivariate choropleth approach builds on public examples from Suzuki Shosuke's Japan bivariate choropleth mapping code:
-<https://github.com/shosuke-13/Japan-Bivariate-Choroplethmaps>.
-
-Financial support was received from the Leverhulme Trust for the Leverhulme Centre for Demographic Science (grant RC-2018-003), Nuffield College, and the Health Foundation REAL Demand Unit.
-
-## License
-
-This project is released under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details.
+The repository is released under the [GNU General Public License v3.0](LICENSE).
+Source datasets remain subject to their providers' terms; the code license does
+not grant redistribution rights for those datasets.

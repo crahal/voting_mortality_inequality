@@ -1,0 +1,15 @@
+name: Data or methods question
+description: Discuss a source, variable definition, boundary choice or interpretation.
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Identify the table, figure, variable and relevant election or mortality year.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting evidence
+      description: Link to a source or relevant notebook section. Do not upload raw datasets.
