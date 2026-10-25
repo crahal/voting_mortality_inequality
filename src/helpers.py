@@ -1872,6 +1872,7 @@ def export_full_correlation_tables_docx(
 
 
 def plot_scatters(df_2019, df_2024, config_list):
+    mpl.rcParams.update(FIGURE_FONT_SETTINGS)
     _ensure_output_dirs()
     df_2019 = df_2019[df_2019["First party"] != "Spk"].copy()
     df_2024 = df_2024[df_2024["First party"] != "Spk"].copy()
@@ -1918,29 +1919,13 @@ def plot_scatters(df_2019, df_2024, config_list):
                markeredgewidth=0.65, label=label)
         for party, label in [("Con", "Conservative"), ("Lab", "Labour"), ("Other", "Other")]
     ]
-    legend = ax1.legend(
-        handles=legend_elements,
-        loc="upper left" if party_column == "Lab PC" else "upper right",
-        frameon=True,
-        fontsize=9,
-        framealpha=1,
-        facecolor="w",
-        edgecolor="black",
-        handlelength=1,
-        handletextpad=0.6,
-        labelspacing=0.4,
-        borderpad=0.6,
-        ncols=1,
-    )
-    legend.get_frame().set_linewidth(0.7)
-
-    panel_labels = ["2019 | Female", "2019 | Male", "2024 | Female", "2024 | Male"]
-    for ax, title, panel_label in zip(axes, ["a.", "b.", "c.", "d."], panel_labels):
+    correlation_anchor = (0.02, 0.98)
+    for ax, title in zip(axes, ["a.", "b.", "c.", "d."]):
         y_min, y_max = ax.get_ylim()
-        ax.set_ylim(y_min - 0.05 * (y_max - y_min), y_max)
+        # Leave room inside the axes for the correlation box and party legend.
+        ax.set_ylim(y_min - 0.05 * (y_max - y_min), y_max + 0.20 * (y_max - y_min))
         ax.set_axisbelow(True)
-        ax.grid(False, axis="x", which="both")
-        ax.grid(axis="y", which="major", linestyle="-", color="#e6e6e6", linewidth=0.6)
+        ax.grid(True, axis="both", which="major", linestyle="--", color="#e6e6e6", linewidth=0.6, alpha=0.75)
         ax.tick_params(axis="both", which="major", length=3, width=0.7, color="#555555")
         ax.xaxis.labelpad = 6
         ax.yaxis.labelpad = 6
@@ -1948,15 +1933,9 @@ def plot_scatters(df_2019, df_2024, config_list):
         for spine in ["left", "bottom"]:
             ax.spines[spine].set_color("#555555")
             ax.spines[spine].set_linewidth(0.7)
-        ax.set_title(title, loc="left", fontsize=19, fontweight="bold", y=1.0)
-        ax.set_title(panel_label, loc="right", fontsize=11, color="#444444", y=1.0)
+        ax.set_title(title, loc="left", fontsize=19, fontweight="bold",
+                     y=1.0, pad=4, va="bottom")
 
-    legend_bottom = None
-    if party_column == "Lib PC":
-        fig.canvas.draw()
-        legend_bottom = ax1.transAxes.inverted().transform(
-            legend.get_window_extent(fig.canvas.get_renderer()).p0
-        )[1]
     correlation_specs = [
         (ax1, df_2019, "ASMR_f", 2019, "F", 4),
         (ax2, df_2019, "ASMR_m", 2019, "M", 3),
@@ -1973,17 +1952,9 @@ def plot_scatters(df_2019, df_2024, config_list):
             r"Spearman $\rho$ = " + spearman_rho + "\n"
             r"Pearson $r$ = " + pearson_r
         )
-        anchor = {}
-        if party_column == "Lab PC":
-            annotate_pos = "lower right"
-        elif ax is ax1 and legend_bottom is not None:
-            # Keep the low-ASMR Liberal Democrat points visible beneath the data cloud.
-            annotate_pos = "upper right"
-            anchor = dict(bbox_to_anchor=(1, legend_bottom - 0.02), bbox_transform=ax.transAxes)
-        else:
-            annotate_pos = "lower left" if ax is ax1 else "upper right"
-        at = AnchoredText(annotation_text, prop=dict(size=9), frameon=True, loc=annotate_pos,
-                          pad=0.5, **anchor)
+        at = AnchoredText(annotation_text, prop=dict(size=9), frameon=True, loc="upper left",
+                          pad=0.5, borderpad=0, bbox_to_anchor=correlation_anchor,
+                          bbox_transform=ax.transAxes)
         at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
         at.patch.set_edgecolor("black")
         at.patch.set_linewidth(0.7)
@@ -1994,6 +1965,27 @@ def plot_scatters(df_2019, df_2024, config_list):
             f"Spearman rho: {spearman_rho}, p-value {spearman_p}; "
             f"Pearson r: {pearson_r}, p-value {pearson_p}"
         )
+
+    for ax in axes:
+        legend = ax.legend(
+            handles=legend_elements,
+            loc="upper right",
+            bbox_to_anchor=(0.98, correlation_anchor[1]),
+            bbox_transform=ax.transAxes,
+            borderaxespad=0,
+            frameon=True,
+            fontsize=9,
+            framealpha=1,
+            facecolor="w",
+            edgecolor="black",
+            handlelength=1,
+            handletextpad=0.6,
+            labelspacing=0.4,
+            borderpad=0.6,
+            ncols=3,
+            columnspacing=0.8,
+        )
+        legend.get_frame().set_linewidth(0.7)
 
     if annotate_leaders:
         _annotate_scatter_leaders(ax1, ax2, ax3, ax4, df_2019, df_2024)
