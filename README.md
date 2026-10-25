@@ -68,6 +68,19 @@ stops execution. For offline use, call
 The main notebook links to the snapshot and the ONS download. Local data,
 including snapshots, are ignored by Git.
 
+Section 4 additionally reports female and male **2021 premature ASMR** from
+[ONS release 1961](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1961numbersandagestandardisedmortalityratesforprematuredeathsbyparliamentaryconstituencyandsexin2021).
+The separately pinned snapshot is
+`data/raw/mortality/snapshots/premature_asmr_2021_20261025T085354Z.xlsx`
+(SHA-256 `0ac240f4cfd6fbf9868aab200a16a6cf04d0d88df6fe796611a3ad3e9f67f5b6`,
+79,479 bytes). `ensure_mortality_snapshot(dataset="2021_premature")`
+downloads missing data and performs the same hash-change check at startup.
+This outcome uses deaths registered in 2021 and is linked by constituency code
+to the 2019 election only. No rate is imputed for the revised 2024 boundaries.
+The existing 2019/2024 ASMR outcomes and figures are unchanged; the additional
+Spearman/Pearson coefficients and p values appear in the full supplementary
+Word table, not the four-outcome manuscript table.
+
 ## Outputs
 
 Running the notebook regenerates:

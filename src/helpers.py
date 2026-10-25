@@ -134,12 +134,23 @@ RAW_DATA_SOURCES = [
     },
     {
         "path": "data/raw/mortality/pcondeathspopulations20192024.xlsx",
+        "dataset": "2019_2024",
         "snapshot_path": "data/raw/mortality/snapshots/pcondeathspopulations20192024_20261025T083750Z.xlsx",
         "sha256": "f706b80f2144be283f31cee5eaaf4cdfe9dd49d5d10dacc32e4bfcbe8125cd39",
         "size": 222513,
         "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/3175numbersandagestandardisedmortalityratesofdeathspopulationcountsbysexandparliamentaryconstituencyenglandandwalesdeathsregisteredin2019and2024",
         "download": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/3175numbersandagestandardisedmortalityratesofdeathspopulationcountsbysexandparliamentaryconstituencyenglandandwalesdeathsregisteredin2019and2024/pcondeathspopulations20192024.xlsx",
         "note": "ONS ad hoc release 3175. Analysis uses the snapshot archived on 2026-10-25 (UTC).",
+    },
+    {
+        "path": "data/raw/mortality/prematuredeathsandagestandardisedmortalityratesbyparlimentaryconsituencyandsexin2021.xlsx",
+        "dataset": "2021_premature",
+        "snapshot_path": "data/raw/mortality/snapshots/premature_asmr_2021_20261025T085354Z.xlsx",
+        "sha256": "0ac240f4cfd6fbf9868aab200a16a6cf04d0d88df6fe796611a3ad3e9f67f5b6",
+        "size": 79479,
+        "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1961numbersandagestandardisedmortalityratesforprematuredeathsbyparliamentaryconstituencyandsexin2021",
+        "download": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1961numbersandagestandardisedmortalityratesforprematuredeathsbyparliamentaryconstituencyandsexin2021/prematuredeathsandagestandardisedmortalityratesbyparlimentaryconsituencyandsexin2021.xlsx",
+        "note": "ONS ad hoc release 1961: premature deaths registered in 2021, on pre-2024 constituency boundaries. Separate from the 2019/2024 ASMR outcomes.",
     },
     {
         "path": "data/raw/voting/HoC-GE2019-results-by-constituency.xlsx",
@@ -189,7 +200,7 @@ RAW_DATA_SOURCE_EXTRA_FILES = {
 }
 
 EXPECTED_SUMMARY_TABLE_HASHES = {
-    "2019": "97b368775048aafee48d17974b71b770163c420eed12b0fc8d7ebf42c724895b",
+    "2019": "c207ad1f89f0126cb8dd92e906895fcf10dc593dea251a1f8d7f289dfed50fbf",
     "2024": "2252b88fb687769d70bb495898a3a5ec0a6b9e4100b42ab521239372f175e729",
 }
 
@@ -380,8 +391,11 @@ def _raw_data_file_specs():
     return specs
 
 
-def _mortality_source():
-    return next(spec for spec in RAW_DATA_SOURCES if "snapshot_path" in spec)
+def _mortality_source(dataset="2019_2024"):
+    for spec in RAW_DATA_SOURCES:
+        if "snapshot_path" in spec and spec.get("dataset", "2019_2024") == dataset:
+            return spec
+    raise ValueError(f"Unknown mortality dataset: {dataset}")
 
 
 def _fetch_mortality_download(url):
@@ -390,14 +404,16 @@ def _fetch_mortality_download(url):
         return response.read()
 
 
-def ensure_mortality_snapshot(download=True, check_remote=True):
+def ensure_mortality_snapshot(download=True, check_remote=True, dataset="2019_2024"):
     """Reuse the pinned ASMR snapshot; upstream changes warn but never replace it.
 
     Call once at notebook startup to check ONS. Readers use check_remote=False
     so repeated sheet reads do not trigger repeated downloads. The timestamp in
     snapshot_path identifies the archived version, not the mortality year.
+    dataset is either '2019_2024' or '2021_premature'.
     """
-    spec = _mortality_source()
+    spec = _mortality_source(dataset)
+    label = "ONS ASMR" if dataset == "2019_2024" else "ONS 2021 premature ASMR"
     snapshot = PROJECT_ROOT / spec["snapshot_path"]
     remote_data = None
     if not snapshot.exists():
@@ -426,7 +442,7 @@ def ensure_mortality_snapshot(download=True, check_remote=True):
                 remote_data = _fetch_mortality_download(spec["download"])
         except (OSError, TimeoutError) as exc:
             warnings.warn(
-                f"Could not check the ONS ASMR download: {exc}. "
+                f"Could not check the {label} download: {exc}. "
                 f"Using verified snapshot {snapshot}; upstream changes are unknown.",
                 RuntimeWarning,
                 stacklevel=2,
@@ -435,20 +451,20 @@ def ensure_mortality_snapshot(download=True, check_remote=True):
             remote_hash = hashlib.sha256(remote_data).hexdigest()
             if remote_hash != spec["sha256"]:
                 warnings.warn(
-                    f"ONS ASMR download has changed at {spec['download']}. "
+                    f"{label} download has changed at {spec['download']}. "
                     f"Remote SHA-256: {remote_hash}; pinned SHA-256: {spec['sha256']}. "
                     f"Continuing to use {snapshot}; the snapshot has not been replaced.",
                     RuntimeWarning,
                     stacklevel=2,
                 )
             else:
-                print(f"ONS ASMR download matches the pinned SHA-256: {remote_hash}.")
+                print(f"{label} download matches the pinned SHA-256: {remote_hash}.")
     return snapshot
 
 
-def mortality_data_path():
+def mortality_data_path(dataset="2019_2024"):
     """Resolve and verify the snapshot for every ASMR reader, without an online check."""
-    return ensure_mortality_snapshot(check_remote=False)
+    return ensure_mortality_snapshot(check_remote=False, dataset=dataset)
 
 
 def ensure_raw_data(download=True, verify=True):
@@ -456,7 +472,10 @@ def ensure_raw_data(download=True, verify=True):
     failures = []
     for spec in _raw_data_file_specs():
         if "snapshot_path" in spec:
-            ensure_mortality_snapshot(download=download, check_remote=download)
+            ensure_mortality_snapshot(
+                download=download, check_remote=download,
+                dataset=spec.get("dataset", "2019_2024"),
+            )
             continue
         path = PROJECT_ROOT / spec["path"]
         if download and not path.exists():
@@ -500,8 +519,18 @@ def validate_raw_data_schema():
         ("data/raw/deprivation/deprivation_2025.xlsx", "Data_constituencies", 543, ["ONSConstID", "Health deprivation and disability"], {}),
         ("data/raw/life_expectancy/trends_in_sii.xlsx", "Sheet1", 36, ["timeperiod", "sex", "value"], {}),
     ]
+    for sheet in ["1", "2"]:
+        expected.append((
+            _mortality_source("2021_premature")["path"], sheet, 573,
+            ["Parliamentary Constituency ", "ASMR", "CI Lower", "CI Upper"],
+            {"skiprows": 4},
+        ))
+    snapshots = {
+        spec["path"]: PROJECT_ROOT / spec["snapshot_path"]
+        for spec in RAW_DATA_SOURCES if "snapshot_path" in spec
+    }
     for rel_path, sheet_name, rows, columns, read_kwargs in expected:
-        path = mortality_data_path() if rel_path == _mortality_source()["path"] else PROJECT_ROOT / rel_path
+        path = snapshots.get(rel_path, PROJECT_ROOT / rel_path)
         df = pd.read_excel(path, sheet_name=sheet_name, **read_kwargs)
         if len(df) != rows:
             raise ValueError(f"{rel_path} has {len(df)} rows; expected {rows}.")
@@ -1218,6 +1247,8 @@ def _format_coefficient_with_p_value(coefficient, p_value):
 PUBLICATION_VARIABLE_LABELS = {
     "ASMR_f": "ASMR, female",
     "ASMR_m": "ASMR, male",
+    "PrematureASMR2021_f": "Premature ASMR (2021), female",
+    "PrematureASMR2021_m": "Premature ASMR (2021), male",
     "ProportionBadHealth": "Not good health",
     "ProportionDisabled": "Disabled under Equality Act",
     "ProportionProvidesAnyUnpaidCare": "Any unpaid care",
@@ -1227,7 +1258,7 @@ PUBLICATION_VARIABLE_LABELS = {
 PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS = {
     "Statistic": "Correlation",
     "Variable": "Health/deprivation measure",
-    "Year": "Year",
+    "Year": "Election year",
     "N": "N",
     "Con PC": "Conservative",
     "Lab PC": "Labour",
@@ -1239,7 +1270,7 @@ PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS = {
 DOCX_TABLE_COLUMN_WIDTHS = {
     "Correlation": 900,
     "Health/deprivation measure": 3300,
-    "Year": 650,
+    "Election year": 650,
     "N": 500,
     "Conservative": 2200,
     "Labour": 2200,
@@ -1748,6 +1779,7 @@ def export_full_correlation_tables_docx(
         "Supplementary table. Political party by mortality, health, unpaid care and deprivation",
         [
             "Cells show correlation coefficient (p value). ASMR denotes age-standardised mortality rate per 100,000 population.",
+            "Year is election year. Premature ASMR (2021) uses deaths registered in 2021 and pre-2024 boundaries; it is included for the 2019 election only, without a 2024 boundary proxy.",
             "Party columns are vote shares except voter turnout; Brexit/Reform UK is Brexit Party in 2019 and Reform UK in 2024.",
             "P values <0.001 are shown as <0.001.",
         ],
@@ -2312,6 +2344,20 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
     return fig
 
 
+def make_premature_asmr_2021():
+    """Read sex-specific 2021 premature rates on pre-2024 constituency codes."""
+    path = mortality_data_path("2021_premature")
+    tables = []
+    for sheet, sex in [("1", "m"), ("2", "f")]:
+        table = pd.read_excel(path, sheet_name=sheet, skiprows=4)
+        table = table[["Parliamentary Constituency ", "ASMR"]].rename(columns={
+            "Parliamentary Constituency ": "ONS ID",
+            "ASMR": f"PrematureASMR2021_{sex}",
+        })
+        tables.append(table)
+    return tables[0].merge(tables[1], on="ONS ID", validate="one_to_one")
+
+
 def make_summary_tables(df_1, df_2, year):
     if year == "2019":
         party_share = ["Con PC", "Lab PC", "Lib PC", "Brx PC", "Vote PC"]
@@ -2330,6 +2376,12 @@ def make_summary_tables(df_1, df_2, year):
     ]
     statistic_functions = [("Spearman", spearmanr), ("Pearson", pearsonr)]
     df = df_2.copy()
+    if year == "2019":
+        # The 2021 workbook has old constituency codes, not 2024 geographies.
+        premature = make_premature_asmr_2021().set_index("ONS ID")
+        for column in ["PrematureASMR2021_f", "PrematureASMR2021_m"]:
+            df[column] = df["ONS ID"].map(premature[column])
+            crosstab_var.append(column)
 
     coefficient_tables = []
     p_value_tables = []
