@@ -1213,6 +1213,17 @@ def print_manuscript_statistics(table_rho_2019, table_rho_2024):
             f"(2019), {pearson_2024:.3f} (2024)."
         )
 
+    print("\nLabour vote-share correlations with 2021 premature ASMR "
+          "(2019 election only; no 2024 boundary proxy)")
+    for sex_label, variable in [("Male", "PrematureASMR2021_m"),
+                                ("Female", "PrematureASMR2021_f")]:
+        spearman = _summary_table_row(table_rho_2019, "Spearman", variable)
+        pearson = _summary_table_row(table_rho_2019, "Pearson", variable)
+        print(
+            f"{sex_label} premature ASMR (2021): Spearman rho = {float(spearman['Lab PC']):.3f}; "
+            f"Pearson r = {float(pearson['Lab PC']):.3f}; N = {spearman['N']}."
+        )
+
 
 def print_p_value_table(table):
     p_value_columns = [
@@ -1266,6 +1277,31 @@ PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS = {
     "Brx/RUK PC": "Brexit/Reform UK",
     "Vote PC": "Turnout",
 }
+
+
+def make_mortality_year_display_table(table_2019, table_2024, mortality_year):
+    """Show both statistics for one mortality year; None selects non-mortality outcomes."""
+    if mortality_year not in {2019, 2021, 2024, None}:
+        raise ValueError(f"Unsupported mortality year: {mortality_year}")
+    display_table = pd.concat(
+        [table_2019.rename(columns={"Brx PC": "Brx/RUK PC"}),
+         table_2024.rename(columns={"RUK PC": "Brx/RUK PC"})],
+        ignore_index=True,
+    )
+    mortality_years = pd.Series("", index=display_table.index)
+    main_asmr = display_table["Variable"].isin(["ASMR_f", "ASMR_m"])
+    premature_asmr = display_table["Variable"].isin(["PrematureASMR2021_f", "PrematureASMR2021_m"])
+    mortality_years.loc[main_asmr] = display_table.loc[main_asmr, "Year"].astype(str)
+    mortality_years.loc[premature_asmr] = "2021"
+    for column in _correlation_value_columns(display_table):
+        display_table[column] = pd.to_numeric(display_table[column])
+    display_table["Variable"] = display_table["Variable"].replace(PUBLICATION_VARIABLE_LABELS)
+    display_table = display_table.reindex(columns=PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS)
+    display_table = display_table.rename(columns=PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS)
+    display_table.insert(3, "Mortality year", mortality_years)
+    selected_year = "" if mortality_year is None else str(mortality_year)
+    return display_table.loc[display_table["Mortality year"] == selected_year].reset_index(drop=True)
+
 
 DOCX_TABLE_COLUMN_WIDTHS = {
     "Correlation": 900,

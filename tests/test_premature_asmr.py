@@ -1,4 +1,6 @@
+import contextlib
 import hashlib
+import io
 import sys
 import tempfile
 import unittest
@@ -121,6 +123,61 @@ class PrematureCorrelationTests(unittest.TestCase):
         self.assertEqual(len(new_rows), 4)
         self.assertEqual(set(new_rows["Election year"]), {"2019"})
         self.assertTrue(new_rows["Labour"].str.contains(r"\(.+\)").all())
+
+    def test_mortality_year_displays_preserve_every_coefficient_and_p_value(self):
+        with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
+            r19, p19 = helpers.make_summary_tables(self.frame, self.frame, "2019")
+        r24, p24 = helpers.make_summary_tables(self.frame, self.frame, "2024")
+        for tables in [(r19, r24), (p19, p24)]:
+            originals = [table.copy(deep=True) for table in tables]
+            groups = []
+            for mortality_year in [2019, 2021, 2024, None]:
+                with self.subTest(year=mortality_year, tables="p" if tables[0] is p19 else "r"):
+                    display = helpers.make_mortality_year_display_table(*tables, mortality_year)
+                    groups.append(display)
+                    self.assertEqual(len(display), 16 if mortality_year is None else 4)
+                    self.assertEqual(set(display["Correlation"]), {"Spearman", "Pearson"})
+                    self.assertEqual(set(display["Mortality year"]),
+                                     {"" if mortality_year is None else str(mortality_year)})
+                    if mortality_year is None:
+                        self.assertEqual(set(display["Election year"]), {"2019", "2024"})
+                        self.assertFalse(display["Health/deprivation measure"].str.contains("ASMR").any())
+                    else:
+                        self.assertEqual(set(display["Election year"]),
+                                         {"2019" if mortality_year == 2021 else str(mortality_year)})
+                        self.assertEqual(set(display["N"]), {3 if mortality_year == 2021 else 4})
+            lookup = pd.concat(groups).set_index(["Correlation", "Election year", "Health/deprivation measure"])
+            self.assertTrue(lookup.index.is_unique)
+            self.assertEqual(len(lookup), 28)
+            for table, original in zip(tables, originals):
+                pd.testing.assert_frame_equal(table, original, check_exact=True)
+                for _, row in table.iterrows():
+                    key = (row["Statistic"], row["Year"], helpers.PUBLICATION_VARIABLE_LABELS[row["Variable"]])
+                    self.assertEqual(lookup.loc[key, "N"], row["N"])
+                    for column in helpers._correlation_value_columns(table):
+                        name = "Brx/RUK PC" if column in {"Brx PC", "RUK PC"} else column
+                        label = helpers.PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS[name]
+                        self.assertEqual(lookup.loc[key, label], row[column])
+
+    def test_mortality_year_display_rejects_unknown_year(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported mortality year"):
+            helpers.make_mortality_year_display_table(pd.DataFrame(), pd.DataFrame(), 2020)
+
+    def test_manuscript_statistics_prints_2021_for_both_sexes(self):
+        with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
+            r19, _ = helpers.make_summary_tables(self.frame, self.frame, "2019")
+        r24, _ = helpers.make_summary_tables(self.frame, self.frame, "2024")
+        output = io.StringIO()
+        with patch.object(helpers, "make_leader_asmr_table", return_value=pd.DataFrame(columns=["Year", "Leader"])), \
+                contextlib.redirect_stdout(output):
+            helpers.print_manuscript_statistics(r19, r24)
+        printed = output.getvalue()
+        self.assertIn("2019 election only; no 2024 boundary proxy", printed)
+        for sex, variable in [("Male", "PrematureASMR2021_m"), ("Female", "PrematureASMR2021_f")]:
+            spearman = helpers._summary_table_coefficient(r19, "Spearman", variable, "Lab PC")
+            pearson = helpers._summary_table_coefficient(r19, "Pearson", variable, "Lab PC")
+            self.assertIn(f"{sex} premature ASMR (2021): Spearman rho = {spearman:.3f}; "
+                          f"Pearson r = {pearson:.3f}; N = 3.", printed)
 
     def test_manuscript_table_includes_2021_for_2019_only(self):
         with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
