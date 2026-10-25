@@ -11,6 +11,14 @@ and `requirements-constraints.txt`. Downloads used standard Python `requests`.
 No browser, Selenium, Playwright or `curl_cffi` was installed in that environment.
 No original local data were copied into the reproduction directory.
 
+The full test was then repeated from an actual fresh Git clone of commit
+`f229874`, with a second empty virtual environment installed using only
+`python -m pip install -r requirements.txt`. All inputs were downloaded again;
+all **36 code cells** executed successfully, all correlation/p-value/N hashes
+passed, and all nine robustness CSVs matched byte-for-byte. No development-only
+package was needed to execute the analysis. Dependency compatibility checks and
+all **69 offline unit tests** also passed (tests used the development environment).
+
 Before changing the original pipeline, its local election tables, merged data,
 geometries, summary tables, manuscript statistics and publication tables were
 captured separately as the comparison baseline. The new run was compared against
