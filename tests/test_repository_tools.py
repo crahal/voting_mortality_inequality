@@ -18,6 +18,16 @@ import verify_results
 
 
 class RepositoryCheckTests(unittest.TestCase):
+    def test_runner_temp_is_configured_at_step_scope(self):
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        workflow = yaml.safe_load((root / ".github/workflows/checks.yml").read_text())
+        job = workflow["jobs"]["checks"]
+        self.assertNotIn("MPLCONFIGDIR", job["env"])
+        step = next(step for step in job["steps"] if step.get("name") == "Test with synthetic data")
+        self.assertEqual(step["env"]["MPLCONFIGDIR"], "${{ runner.temp }}/matplotlib")
+
     def test_dependency_constraints_are_valid_exact_pins(self):
         from packaging.requirements import Requirement
 
