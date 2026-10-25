@@ -28,9 +28,15 @@ root without Make. `make help` lists equivalent shortcuts on systems with Make.
 Geospatial wheels include native dependencies on supported platforms. If a
 platform needs a separate native-library installation, record that environment
 and run the result checks before treating it as an equivalent reproduction.
-The figures request Helvetica; Matplotlib can substitute another font when it
-is absent. Fonts and rendering libraries can affect appearance without changing
-the statistical results. PNG export at 800 dpi is memory-intensive.
+Figure exports require installed Helvetica Regular, Bold, Oblique and Bold
+Oblique fonts, including for mathematical symbols. Install licensed copies using
+your operating system's font installer and restart the notebook kernel. These
+fonts are not distributed with this repository or installed by pip. Exports fail
+with an explicit error if Helvetica is unavailable instead of substituting a
+different family. PDFs embed the fonts; SVGs preserve glyphs as vector outlines.
+This font prerequisite does not affect numerical verification with
+`python scripts/verify_results.py`. Rendering libraries can still affect figure
+bytes without changing statistics. PNG export at 800 dpi is memory-intensive.
 
 ## Checks Without Research Data
 

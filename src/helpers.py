@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 import tempfile
 import time
 import urllib.parse
@@ -20,6 +21,7 @@ import pandas as pd
 import requests
 import seaborn as sns
 from matplotlib.lines import Line2D
+from matplotlib import font_manager
 from matplotlib.offsetbox import AnchoredText
 from matplotlib.patches import Patch
 from scipy.stats import pearsonr, spearmanr
@@ -37,7 +39,24 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 FIGURES_DIR = OUTPUT_DIR / "figures"
 TABLES_DIR = OUTPUT_DIR / "tables"
 
-mpl.rcParams["font.family"] = "Helvetica"
+FIGURE_FONT_SETTINGS = {
+    "font.family": "Helvetica",
+    "font.sans-serif": ["Helvetica"],
+    "mathtext.fontset": "custom",
+    "mathtext.rm": "Helvetica",
+    "mathtext.it": "Helvetica:style=oblique",
+    "mathtext.bf": "Helvetica:weight=bold",
+    "mathtext.bfit": "Helvetica:style=oblique:weight=bold",
+    "mathtext.sf": "Helvetica",
+    "mathtext.cal": "Helvetica",
+    "mathtext.tt": "Helvetica",
+    "mathtext.fallback": None,
+    "text.usetex": False,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+    "svg.fonttype": "path",
+}
+mpl.rcParams.update(FIGURE_FONT_SETTINGS)
 
 RAW_DATA_SOURCES = [
     {
@@ -231,10 +250,28 @@ def _party_metadata_from_code_or_column(value, fallback_label=None):
     return party_code, label, f"{label} Vote Share", _slugify(label)
 
 
+def _require_helvetica():
+    for style, weight in [("normal", "normal"), ("normal", "bold"),
+                          ("oblique", "normal"), ("oblique", "bold")]:
+        try:
+            font_manager.findfont(
+                font_manager.FontProperties(family="Helvetica", style=style, weight=weight),
+                fallback_to_default=False,
+            )
+        except ValueError as error:
+            raise RuntimeError(
+                "Helvetica is required for figure exports. Install licensed Helvetica "
+                "Regular, Bold, Oblique and Bold Oblique fonts, then restart the notebook "
+                "kernel. See docs/reproducibility.md. No substitute font will be exported."
+            ) from error
+
+
 def _save_figure(fig, stem):
-    fig.savefig(FIGURES_DIR / f"{stem}.pdf", bbox_inches="tight")
-    fig.savefig(FIGURES_DIR / f"{stem}.svg", bbox_inches="tight")
-    fig.savefig(FIGURES_DIR / f"{stem}.png", bbox_inches="tight", dpi=800)
+    _require_helvetica()
+    for extension, options in [("pdf", {}), ("svg", {}), ("png", {"dpi": 800})]:
+        output_path = FIGURES_DIR / f"{stem}.{extension}"
+        fig.savefig(output_path, bbox_inches="tight", **options)
+        print(f"Wrote {os.path.relpath(output_path)}")
 
 
 def _sha256(path):
