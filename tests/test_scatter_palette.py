@@ -49,10 +49,26 @@ class ScatterPaletteTests(unittest.TestCase):
                                          if isinstance(artist, helpers.AnchoredText)]
                     self.assertEqual(len(correlation_boxes), 1)
                     self.assertEqual(correlation_boxes[0].patch.get_edgecolor(), colors.to_rgba("black"))
-                legend_colors = [item.get_facecolor() for item in figure.axes[0].get_legend().get_patches()]
+                legend = figure.axes[0].get_legend()
+                legend_colors = [colors.to_rgba(item.get_markerfacecolor()) for item in legend.get_lines()]
                 np.testing.assert_allclose(legend_colors, expected[[1, 0, 2]])
-                self.assertEqual(figure.axes[0].get_legend().get_frame().get_edgecolor(), colors.to_rgba("black"))
-                for label in figure.axes[0].get_legend().get_texts():
+                self.assertEqual(legend.get_frame().get_edgecolor(), colors.to_rgba("black"))
+                for marker in legend.get_lines():
+                    self.assertEqual(marker.get_marker(), "o")
+                    self.assertEqual(marker.get_markersize(), matplotlib.rcParams["lines.markersize"])
+                figure.canvas.draw()
+                renderer = figure.canvas.get_renderer()
+                for axis in figure.axes:
+                    self.assertFalse(any(line.get_visible() for line in axis.get_xgridlines()))
+                    self.assertTrue(any(line.get_visible() for line in axis.get_ygridlines()))
+                    box = next(artist for artist in axis.artists if isinstance(artist, helpers.AnchoredText))
+                    location = "lower right" if party == "Lab PC" else (
+                        "lower left" if axis is figure.axes[0] and party != "Lib PC" else "upper right"
+                    )
+                    self.assertEqual(box.loc, helpers.AnchoredText.codes[location])
+                    if axis is figure.axes[0]:
+                        self.assertFalse(box.get_window_extent(renderer).overlaps(legend.get_window_extent(renderer)))
+                for label in legend.get_texts():
                     self.assertEqual(label.get_fontsize(), 9)
                 save.assert_called_once()
                 pd.testing.assert_frame_equal(frame, original)

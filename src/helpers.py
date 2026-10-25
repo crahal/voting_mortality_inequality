@@ -1894,9 +1894,10 @@ def plot_scatters(df_2019, df_2024, config_list):
     ax4.set_xlabel(f"{axis_label} (2024)", fontsize=14)
 
     legend_elements = [
-        Patch(facecolor=color_mapping["Con"], edgecolor="#333333", linewidth=0.65, label="Conservative"),
-        Patch(facecolor=color_mapping["Lab"], edgecolor="#333333", linewidth=0.65, label="Labour"),
-        Patch(facecolor=color_mapping["Other"], edgecolor="#333333", linewidth=0.65, label="Other"),
+        Line2D([], [], linestyle="none", marker="o", markersize=mpl.rcParams["lines.markersize"],
+               markerfacecolor=color_mapping[party], markeredgecolor="#333333",
+               markeredgewidth=0.65, label=label)
+        for party, label in [("Con", "Conservative"), ("Lab", "Labour"), ("Other", "Other")]
     ]
     legend = ax1.legend(
         handles=legend_elements,
@@ -1906,6 +1907,10 @@ def plot_scatters(df_2019, df_2024, config_list):
         framealpha=1,
         facecolor="w",
         edgecolor="black",
+        handlelength=1,
+        handletextpad=0.6,
+        labelspacing=0.4,
+        borderpad=0.6,
         ncols=1,
     )
     legend.get_frame().set_linewidth(0.7)
@@ -1914,14 +1919,22 @@ def plot_scatters(df_2019, df_2024, config_list):
         y_min, y_max = ax.get_ylim()
         ax.set_ylim(y_min - 0.05 * (y_max - y_min), y_max)
         ax.set_axisbelow(True)
-        ax.grid(which="both", linestyle="--", color="#e6e6e6", linewidth=0.6)
+        ax.grid(False, axis="x", which="both")
+        ax.grid(axis="y", which="major", linestyle="-", color="#e6e6e6", linewidth=0.6)
         ax.tick_params(axis="both", which="major", length=3, width=0.7, color="#555555")
+        ax.xaxis.labelpad = 6
+        ax.yaxis.labelpad = 6
         for spine in ["left", "bottom"]:
             ax.spines[spine].set_color("#555555")
             ax.spines[spine].set_linewidth(0.7)
         ax.set_title(title, loc="left", fontsize=19, fontweight="bold", y=1.0)
 
-    annotate_pos = "lower right" if party_column == "Lab PC" else "lower left"
+    legend_bottom = None
+    if party_column == "Lib PC":
+        fig.canvas.draw()
+        legend_bottom = ax1.transAxes.inverted().transform(
+            legend.get_window_extent(fig.canvas.get_renderer()).p0
+        )[1]
     correlation_specs = [
         (ax1, df_2019, "ASMR_f", 2019, "F", 4),
         (ax2, df_2019, "ASMR_m", 2019, "M", 3),
@@ -1938,7 +1951,17 @@ def plot_scatters(df_2019, df_2024, config_list):
             r"Spearman $\rho$ = " + spearman_rho + "\n"
             r"Pearson $r$ = " + pearson_r
         )
-        at = AnchoredText(annotation_text, prop=dict(size=9), frameon=True, loc=annotate_pos)
+        anchor = {}
+        if party_column == "Lab PC":
+            annotate_pos = "lower right"
+        elif ax is ax1 and legend_bottom is not None:
+            # Keep the low-ASMR Liberal Democrat points visible beneath the data cloud.
+            annotate_pos = "upper right"
+            anchor = dict(bbox_to_anchor=(1, legend_bottom - 0.02), bbox_transform=ax.transAxes)
+        else:
+            annotate_pos = "lower left" if ax is ax1 else "upper right"
+        at = AnchoredText(annotation_text, prop=dict(size=9), frameon=True, loc=annotate_pos,
+                          pad=0.5, **anchor)
         at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
         at.patch.set_edgecolor("black")
         at.patch.set_linewidth(0.7)
@@ -1953,7 +1976,8 @@ def plot_scatters(df_2019, df_2024, config_list):
     if annotate_leaders:
         _annotate_scatter_leaders(ax1, ax2, ax3, ax4, df_2019, df_2024)
 
-    sns.despine()
+    sns.despine(fig=fig)
+    fig.align_labels()
     _save_figure(fig, f"{party_slug}_asmr_scatter")
     plt.close(fig)
     return fig
