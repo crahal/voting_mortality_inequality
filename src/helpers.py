@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import requests
 import seaborn as sns
+from IPython.display import FileLink
 from matplotlib.lines import Line2D
 from matplotlib import font_manager
 from matplotlib.offsetbox import AnchoredText
@@ -378,20 +379,31 @@ def _download_arcgis_lookup(download_id, path):
 
 
 def _verify_file(path, expected_sha256, expected_size):
+    display_path = os.path.relpath(path)
     if not path.exists():
-        raise FileNotFoundError(f"Missing required data file: {path}")
+        raise FileNotFoundError(f"Missing required data file: {display_path}")
     actual_size = path.stat().st_size
     if actual_size != expected_size:
         raise ValueError(
-            f"{path} has size {actual_size}, expected {expected_size}. "
+            f"{display_path} has size {actual_size}, expected {expected_size}. "
             "Do not continue because the analysis input changed."
         )
     actual_sha256 = _sha256(path)
     if actual_sha256 != expected_sha256:
         raise ValueError(
-            f"{path} has sha256 {actual_sha256}, expected {expected_sha256}. "
+            f"{display_path} has sha256 {actual_sha256}, expected {expected_sha256}. "
             "Do not continue because the analysis input changed."
         )
+
+
+class RelativeFileLink(FileLink):
+    """Keep notebook links relative in both HTML and plain-text output."""
+
+    def __init__(self, path):
+        super().__init__(os.path.relpath(path))
+
+    def __repr__(self):
+        return self.path
 
 
 def _raw_data_file_specs():
@@ -435,7 +447,7 @@ def ensure_mortality_snapshot(download=True, check_remote=True, dataset="2019_20
             remote_data = _fetch_mortality_download(spec["download"])
             data = remote_data
         else:
-            raise FileNotFoundError(f"Missing pinned ASMR snapshot: {snapshot}")
+            raise FileNotFoundError(f"Missing pinned ASMR snapshot: {os.path.relpath(snapshot)}")
 
         # Verify a temporary file before publishing it as the pinned snapshot.
         snapshot.parent.mkdir(parents=True, exist_ok=True)
@@ -453,7 +465,7 @@ def ensure_mortality_snapshot(download=True, check_remote=True, dataset="2019_20
         except (OSError, TimeoutError) as exc:
             warnings.warn(
                 f"Could not check the {label} download: {exc}. "
-                f"Using verified snapshot {snapshot}; upstream changes are unknown.",
+                f"Using verified snapshot {os.path.relpath(snapshot)}; upstream changes are unknown.",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -463,7 +475,7 @@ def ensure_mortality_snapshot(download=True, check_remote=True, dataset="2019_20
                 warnings.warn(
                     f"{label} download has changed at {spec['download']}. "
                     f"Remote SHA-256: {remote_hash}; pinned SHA-256: {spec['sha256']}. "
-                    f"Continuing to use {snapshot}; the snapshot has not been replaced.",
+                    f"Continuing to use {os.path.relpath(snapshot)}; the snapshot has not been replaced.",
                     RuntimeWarning,
                     stacklevel=2,
                 )
@@ -1831,7 +1843,7 @@ def export_correlation_tables_docx(
         _docx_manuscript_table(manuscript_rows),
         orientation="landscape",
     )
-    print(f"Wrote {output_path}")
+    print(f"Wrote {os.path.relpath(output_path)}")
     return output_path
 
 
@@ -1867,7 +1879,7 @@ def export_full_correlation_tables_docx(
         full_table,
         orientation="landscape",
     )
-    print(f"Wrote {output_path}")
+    print(f"Wrote {os.path.relpath(output_path)}")
     return output_path
 
 
