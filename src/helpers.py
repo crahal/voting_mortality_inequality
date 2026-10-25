@@ -2167,10 +2167,10 @@ class BivariateChoroplethPlotter:
         ax_inset.set_ylim([0, self.num_groups])
         if len(xaxis_label.splitlines()[0]) > 22:
             xaxis_label = xaxis_label.replace(" Vote Share", "\nVote Share")
-        ax_inset.set_xticks(list(range(self.num_groups + 1)), x_ticks, fontsize=13)
-        ax_inset.set_xlabel(xaxis_label, fontsize=14, labelpad=7)
-        ax_inset.set_yticks(list(range(self.num_groups + 1)), y_ticks, fontsize=13)
-        ax_inset.set_ylabel(yaxis_label, fontsize=14, labelpad=7)
+        ax_inset.set_xticks(list(range(self.num_groups + 1)), x_ticks, fontsize=14)
+        ax_inset.set_xlabel(xaxis_label, fontsize=16, labelpad=8)
+        ax_inset.set_yticks(list(range(self.num_groups + 1)), y_ticks, fontsize=14)
+        ax_inset.set_ylabel(yaxis_label, fontsize=16, labelpad=8)
         ax_inset.tick_params(length=3, width=0.6, color="#555555", pad=4)
         for spine in ax_inset.spines.values():
             spine.set_linewidth(0.7)
@@ -2191,22 +2191,21 @@ def _quantile_edges(*columns, num_groups=5):
     return values.quantile(np.linspace(0, 1, num_groups + 1)).to_numpy()
 
 
-def _set_map_axis(ax, title, subtitle):
+def _set_map_axis(ax, title):
     ax.set_xlim(125000, 660000)
     ax.set_ylim(10000, 675000)
     ax.set_title(title, fontsize=28, fontweight="bold", loc="left", y=1.0, pad=14)
-    ax.set_title(subtitle, fontsize=17, fontweight="bold", loc="right", y=1.0, pad=14)
     sns.despine(ax=ax, left=True, right=True, top=True, bottom=True)
-    ax.annotate(
-        "N",
-        xy=(0.82, 0.93),
-        xytext=(0.82, 0.84),
-        arrowprops=dict(arrowstyle="-|>", color="#333333", lw=1.1, mutation_scale=18),
-        ha="center",
-        va="center",
-        fontsize=16,
-        xycoords=ax.transAxes,
+    ax.text(
+        0.82, 0.94, "N", transform=ax.transAxes,
+        ha="center", va="bottom", fontsize=18, fontweight="bold", color="#222222",
     )
+    for side, offset, facecolor in [("left", -0.018, "#333333"), ("right", 0.018, "white")]:
+        ax.add_patch(mpl.patches.Polygon(
+            [(0.82, 0.925), (0.82 + offset, 0.85), (0.82, 0.867)],
+            transform=ax.transAxes, facecolor=facecolor, edgecolor="#333333",
+            linewidth=0.9, joinstyle="miter", zorder=5, gid=f"north-arrow-{side}",
+        ))
 
 
 def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
@@ -2216,10 +2215,11 @@ def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
     center, radius = minimum_bounding_circle(convex_hull.iloc[0])
     circle = Point(center).buffer(radius * radius_scale)
     gpd.GeoSeries([circle]).plot(
-        color=(1, 1, 1, 0.2),
+        facecolor="none",
         ax=ax,
-        edgecolor=(0, 0, 0, 1),
-        linewidth=1.0,
+        edgecolor="#333333",
+        linewidth=1.5,
+        zorder=4,
     )
     ax.annotate(
         label,
@@ -2227,14 +2227,18 @@ def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
         xytext=xytext(center),
         ha="center",
         va="center",
-        fontsize=15,
+        fontsize=18,
+        color="#222222",
         linespacing=1.15,
+        path_effects=[path_effects.withStroke(linewidth=2.5, foreground="white")],
+        zorder=6,
         arrowprops=dict(
             arrowstyle="->",
             connectionstyle=connectionstyle,
             color="#333333",
-            mutation_scale=22,
-            lw=1.1,
+            mutation_scale=28,
+            lw=1.6,
+            shrinkA=5,
         ),
     )
 
@@ -2315,6 +2319,7 @@ def _write_derived(geodata, party_code, measure, year):
 
 
 def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
+    mpl.rcParams.update(FIGURE_FONT_SETTINGS)
     _ensure_output_dirs()
     df_gpd_2019 = df_gpd_2019[df_gpd_2019["Country name"] == "England"].copy()
     df_gpd_2024 = df_gpd_2024[df_gpd_2024["Country name"] == "England"].copy()
@@ -2357,7 +2362,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion Not\nGood Health (2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 0], "a.", "2019 election | Not good health")
+    _set_map_axis(axs[0, 0], "a.")
 
     df_gpd_2019["column2"] = df_gpd_2019["column3"]
     plotter_disability.plot_bivariate_choropleth(df_gpd_2019, ax=axs[0, 1])
@@ -2366,7 +2371,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion\nDisabled (2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 1], "b.", "2019 election | Disability")
+    _set_map_axis(axs[0, 1], "b.")
 
     plotter_health.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 0])
     plotter_health.plot_inset_legend(
@@ -2374,7 +2379,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion Not\nGood Health (2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 0], "c.", "2024 election | Not good health")
+    _set_map_axis(axs[1, 0], "c.")
 
     df_gpd_2024["column2"] = df_gpd_2024["column3"]
     plotter_disability.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 1])
@@ -2383,7 +2388,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion\nDisabled (2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 1], "d.", "2024 election | Disability")
+    _set_map_axis(axs[1, 1], "d.")
 
     _annotate_map_leaders(axs, df_gpd_2019, df_gpd_2024)
     fig.subplots_adjust(left=0.09, right=0.97, bottom=0.04, top=0.94, wspace=0.24, hspace=0.12)
@@ -2393,6 +2398,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
 
 
 def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
+    mpl.rcParams.update(FIGURE_FONT_SETTINGS)
     _ensure_output_dirs()
     df_gpd_2019 = df_gpd_2019[df_gpd_2019["Country name"] == "England"].copy()
     df_gpd_2024 = df_gpd_2024[df_gpd_2024["Country name"] == "England"].copy()
@@ -2428,7 +2434,7 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Female, 2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 0], "a.", "2019 | Female ASMR")
+    _set_map_axis(axs[0, 0], "a.")
 
     df_gpd_2019["column2"] = df_gpd_2019["column3"]
     plotter_m.plot_bivariate_choropleth(df_gpd_2019, ax=axs[0, 1])
@@ -2437,7 +2443,7 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Male, 2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 1], "b.", "2019 | Male ASMR")
+    _set_map_axis(axs[0, 1], "b.")
 
     plotter_f.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 0])
     plotter_f.plot_inset_legend(
@@ -2445,7 +2451,7 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Female, 2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 0], "c.", "2024 | Female ASMR")
+    _set_map_axis(axs[1, 0], "c.")
 
     df_gpd_2024["column2"] = df_gpd_2024["column3"]
     plotter_m.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 1])
@@ -2454,7 +2460,7 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Male, 2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 1], "d.", "2024 | Male ASMR")
+    _set_map_axis(axs[1, 1], "d.")
 
     _annotate_map_leaders(axs, df_gpd_2019, df_gpd_2024)
     fig.subplots_adjust(left=0.09, right=0.97, bottom=0.04, top=0.94, wspace=0.24, hspace=0.12)
