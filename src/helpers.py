@@ -1773,6 +1773,7 @@ def export_correlation_tables_docx(
     table_p_2024,
     filename="correlation_and_p_value_tables.docx",
 ):
+    """Export the compact online summary; the full export is main Table 1."""
     _ensure_output_dirs()
     manuscript_rows = make_manuscript_correlation_p_value_rows(
         table_rho_2019,
@@ -1783,8 +1784,9 @@ def export_correlation_tables_docx(
     output_path = TABLES_DIR / filename
     _write_docx_table(
         output_path,
-        "Table 1. Political party by mortality, health and disability",
+        "Online compact summary. Political party by mortality, health and disability",
         [
+            "This optional summary omits unpaid care and deprivation. Main Table 1 is full_correlation_and_p_value_table.docx.",
             "Cells show correlation coefficient (p value). ASMR denotes age-standardised mortality rate per 100,000 population.",
             "Column years denote election years. Premature ASMR (2021) uses deaths registered in 2021 and is compared with 2019 voting only; no 2024 boundary proxy is used.",
             "Party rows are vote shares except voter turnout; p values <0.001 are shown as <0.001.",
@@ -1803,6 +1805,7 @@ def export_full_correlation_tables_docx(
     table_p_2024,
     filename="full_correlation_and_p_value_table.docx",
 ):
+    """Export main Table 1 with all outcomes, including 2021 premature ASMR."""
     _ensure_output_dirs()
     full_table = make_combined_correlation_p_value_table(
         table_rho_2019,
@@ -1813,12 +1816,16 @@ def export_full_correlation_tables_docx(
     output_path = TABLES_DIR / filename
     _write_docx_table(
         output_path,
-        "Supplementary table. Political party by mortality, health, unpaid care and deprivation",
+        "Table 1. Constituency-level correlations of political party vote share and turnout with mortality, Census health and caring measures, and health deprivation in England.",
         [
-            "Cells show correlation coefficient (p value). ASMR denotes age-standardised mortality rate per 100,000 population.",
-            "Year is election year. Premature ASMR (2021) uses deaths registered in 2021 and pre-2024 boundaries; it is included for the 2019 election only, without a 2024 boundary proxy.",
-            "Party columns are vote shares except voter turnout; Brexit/Reform UK is Brexit Party in 2019 and Reform UK in 2024.",
-            "P values <0.001 are shown as <0.001.",
+            "Entries are Spearman's \u03c1 or Pearson's r, with two-sided unadjusted p-values in parentheses; "
+            "these p-values do not account for spatial dependence. N denotes constituencies. "
+            "The 2021 rows are premature ASMRs paired only with 2019 voting; "
+            "the election-year column therefore remains 2019. Census measures refer to 2021, "
+            "separately tabulated to each election geography. Deprivation ranks use the 2019 and 2025 "
+            "releases for the 2019 and 2024 election comparisons respectively; rank 1 denotes greatest deprivation. "
+            "Brexit/Reform UK denotes the party relevant to the election year. "
+            "The Speaker is excluded; zero party vote shares are retained.",
         ],
         full_table,
         orientation="landscape",

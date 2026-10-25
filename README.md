@@ -41,8 +41,8 @@ publication files below. No local data or software installation is needed.
 |---|---|
 | Labour vote share and mortality | [Scatter PDF](output/figures/labour_asmr_scatter.pdf), [map PDF](output/figures/labour_asmr_bivariate_choropleth.pdf) |
 | Health and disability | [Bivariate map PDF](output/figures/labour_census_health_disability_bivariate_choropleth.pdf) |
-| Main manuscript table | [Word document](output/tables/correlation_and_p_value_tables.docx) |
-| Full correlations, including unpaid care and deprivation | [Word document](output/tables/full_correlation_and_p_value_table.docx) |
+| Main Table 1: all correlations, including 2021 premature ASMR, unpaid care and deprivation | [Word document](output/tables/full_correlation_and_p_value_table.docx) |
+| Optional compact online summary (excludes unpaid care and deprivation) | [Word document](output/tables/correlation_and_p_value_tables.docx) |
 
 Figures are exported as **PDF, SVG and 800-dpi PNG**. The figure directory also
 contains the Conservative, Liberal Democrat and turnout comparisons. Section 4
@@ -112,7 +112,7 @@ docs/                   Data provenance and reproduction guides
 .github/                CI, dependency maintenance and contribution templates
 assets/                 README imagery
 output/figures/         Publication figures: PDF, SVG and 800-dpi PNG
-output/tables/          Manuscript and supplementary Word tables
+output/tables/          Main Table 1, compact online summary and robustness CSVs
 data/                   Local inputs, snapshots, boundaries and derived CSVs (ignored)
 ```
 

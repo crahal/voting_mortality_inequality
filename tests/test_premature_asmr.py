@@ -124,6 +124,41 @@ class PrematureCorrelationTests(unittest.TestCase):
         self.assertEqual(set(new_rows["Election year"]), {"2019"})
         self.assertTrue(new_rows["Labour"].str.contains(r"\(.+\)").all())
 
+    def test_full_docx_is_main_table_1_and_preserves_every_cell(self):
+        with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
+            r19, p19 = helpers.make_summary_tables(self.frame, self.frame, "2019")
+        r24, p24 = helpers.make_summary_tables(self.frame, self.frame, "2024")
+        tables = [r19, p19, r24, p24]
+        originals = [table.copy(deep=True) for table in tables]
+        expected = helpers.make_combined_correlation_p_value_table(*tables)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(helpers, "TABLES_DIR", Path(directory)), patch.object(helpers, "_ensure_output_dirs"):
+                path = helpers.export_full_correlation_tables_docx(*tables)
+            with zipfile.ZipFile(path) as archive:
+                root = ET.fromstring(archive.read("word/document.xml"))
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        paragraphs = ["".join(p.itertext()) for p in root.findall("w:body/w:p", ns)]
+        self.assertEqual(paragraphs[0],
+                         "Table 1. Constituency-level correlations of political party vote share and turnout "
+                         "with mortality, Census health and caring measures, and health deprivation in England.")
+        self.assertEqual(paragraphs[1:], [
+            "Entries are Spearman's \u03c1 or Pearson's r, with two-sided unadjusted p-values in parentheses; "
+            "these p-values do not account for spatial dependence. N denotes constituencies. "
+            "The 2021 rows are premature ASMRs paired only with 2019 voting; "
+            "the election-year column therefore remains 2019. Census measures refer to 2021, "
+            "separately tabulated to each election geography. Deprivation ranks use the 2019 and 2025 "
+            "releases for the 2019 and 2024 election comparisons respectively; rank 1 denotes greatest deprivation. "
+            "Brexit/Reform UK denotes the party relevant to the election year. "
+            "The Speaker is excluded; zero party vote shares are retained.",
+        ])
+        rows = root.findall(".//w:tbl/w:tr", ns)
+        cells = [["".join(cell.itertext()) for cell in row.findall("w:tc", ns)] for row in rows]
+        self.assertEqual(cells, [list(expected.columns)] + expected.astype(str).values.tolist())
+        self.assertEqual(len(cells), 29)
+        self.assertEqual(root.find(".//w:pgSz", ns).get(f"{{{ns['w']}}}orient"), "landscape")
+        for table, original in zip(tables, originals):
+            pd.testing.assert_frame_equal(table, original, check_exact=True)
+
     def test_mortality_year_displays_preserve_every_coefficient_and_p_value(self):
         with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
             r19, p19 = helpers.make_summary_tables(self.frame, self.frame, "2019")
@@ -210,6 +245,9 @@ class PrematureCorrelationTests(unittest.TestCase):
             with zipfile.ZipFile(path) as archive:
                 root = ET.fromstring(archive.read("word/document.xml"))
         ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        title = "".join(root.find("w:body/w:p", ns).itertext())
+        self.assertTrue(title.startswith("Online compact summary."))
+        self.assertFalse(title.startswith("Table 1."))
         table = root.find(".//w:tbl", ns)
         grid = table.findall("w:tblGrid/w:gridCol", ns)
         self.assertEqual(len(grid), 12)
