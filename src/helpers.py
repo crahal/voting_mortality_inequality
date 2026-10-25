@@ -1280,10 +1280,12 @@ DOCX_TABLE_COLUMN_WIDTHS = {
 }
 
 MANUSCRIPT_TABLE_MEASURES = [
-    ("ASMR (female)", "ASMR_f"),
-    ("ASMR (male)", "ASMR_m"),
-    ("Not good health", "ProportionBadHealth"),
-    ("Disability", "ProportionDisabled"),
+    ("ASMR (female)", "ASMR_f", (2019, 2024)),
+    ("ASMR (male)", "ASMR_m", (2019, 2024)),
+    ("Premature ASMR (2021), female", "PrematureASMR2021_f", (2019,)),
+    ("Premature ASMR (2021), male", "PrematureASMR2021_m", (2019,)),
+    ("Not good health", "ProportionBadHealth", (2019, 2024)),
+    ("Disability", "ProportionDisabled", (2019, 2024)),
 ]
 
 MANUSCRIPT_TABLE_ROWS = [
@@ -1295,7 +1297,10 @@ MANUSCRIPT_TABLE_ROWS = [
     ("Voter turnout", {2019: "Vote PC", 2024: "Vote PC"}),
 ]
 
-DOCX_MANUSCRIPT_COLUMN_WIDTHS = [1150, 1700] + [1700] * 8
+MANUSCRIPT_DATA_COLUMN_COUNT = sum(len(years) for _, _, years in MANUSCRIPT_TABLE_MEASURES)
+DOCX_MANUSCRIPT_COLUMN_WIDTHS = [1150, 1700] + [
+    (16450 - 1150 - 1700) // MANUSCRIPT_DATA_COLUMN_COUNT
+] * MANUSCRIPT_DATA_COLUMN_COUNT
 DOCX_PORTRAIT_COLUMN_WIDTHS = [1900, 1500, 2800, 2400, 2400]
 
 
@@ -1403,8 +1408,8 @@ def make_manuscript_correlation_p_value_rows(
     for statistic, statistic_label in statistic_labels:
         for row_label, columns_by_year in MANUSCRIPT_TABLE_ROWS:
             row = [statistic_label, row_label]
-            for _, variable in MANUSCRIPT_TABLE_MEASURES:
-                for year in [2019, 2024]:
+            for _, variable, years in MANUSCRIPT_TABLE_MEASURES:
+                for year in years:
                     row.append(
                         _manuscript_correlation_cell(
                             tables,
@@ -1417,13 +1422,31 @@ def make_manuscript_correlation_p_value_rows(
             rows.append(row)
 
     n_row = ["", "N"]
-    for _, variable in MANUSCRIPT_TABLE_MEASURES:
-        for year in [2019, 2024]:
+    for _, variable, years in MANUSCRIPT_TABLE_MEASURES:
+        for year in years:
             n_row.append(
                 str(_summary_table_row(tables[year]["rho"], "Spearman", variable)["N"])
             )
     rows.append(n_row)
     return rows
+
+
+def make_manuscript_correlation_p_value_table(
+    table_rho_2019,
+    table_p_2019,
+    table_rho_2024,
+    table_p_2024,
+):
+    """Use the same cells and outcome/election-year groups as the Word table."""
+    rows = make_manuscript_correlation_p_value_rows(
+        table_rho_2019, table_p_2019, table_rho_2024, table_p_2024,
+    )
+    columns = [("Correlation", ""), ("Political party/measure", "")]
+    columns.extend(
+        (label, str(year))
+        for label, _, years in MANUSCRIPT_TABLE_MEASURES for year in years
+    )
+    return pd.DataFrame(rows, columns=pd.MultiIndex.from_tuples(columns))
 
 
 def make_portrait_correlation_p_value_rows(
@@ -1442,7 +1465,7 @@ def make_portrait_correlation_p_value_rows(
         ("Pearson", "Pearson r"),
     ]
 
-    for measure_label, variable in MANUSCRIPT_TABLE_MEASURES:
+    for measure_label, variable, years in MANUSCRIPT_TABLE_MEASURES:
         is_first_measure_row = True
         for statistic, statistic_label in statistic_labels:
             is_first_statistic_row = True
@@ -1457,14 +1480,14 @@ def make_portrait_correlation_p_value_rows(
                             statistic,
                             variable,
                             2019,
-                            columns_by_year[2019],
+                            columns_by_year[2019] if 2019 in years else None,
                         ),
                         _manuscript_correlation_cell(
                             tables,
                             statistic,
                             variable,
                             2024,
-                            columns_by_year[2024],
+                            columns_by_year[2024] if 2024 in years else None,
                         ),
                     ]
                 )
@@ -1475,8 +1498,8 @@ def make_portrait_correlation_p_value_rows(
                 "",
                 "N",
                 "",
-                str(_summary_table_row(tables[2019]["rho"], "Spearman", variable)["N"]),
-                str(_summary_table_row(tables[2024]["rho"], "Spearman", variable)["N"]),
+                str(_summary_table_row(tables[2019]["rho"], "Spearman", variable)["N"]) if 2019 in years else "",
+                str(_summary_table_row(tables[2024]["rho"], "Spearman", variable)["N"]) if 2024 in years else "",
             ]
         )
     return rows
@@ -1594,27 +1617,29 @@ def _docx_manuscript_table(rows):
             width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[1],
         ),
     ]
-    for measure_label, _ in MANUSCRIPT_TABLE_MEASURES:
+    column_index = 2
+    for measure_label, _, years in MANUSCRIPT_TABLE_MEASURES:
         header_1.append(
             _docx_cell(
                 measure_label,
                 bold=True,
-                width=sum(DOCX_MANUSCRIPT_COLUMN_WIDTHS[2:4]),
-                grid_span=2,
+                width=sum(DOCX_MANUSCRIPT_COLUMN_WIDTHS[column_index:column_index + len(years)]),
+                grid_span=len(years),
             )
         )
+        column_index += len(years)
 
     header_2 = [
         _docx_cell("", width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[0]),
         _docx_cell("", width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[1]),
     ]
-    for index in range(2, len(DOCX_MANUSCRIPT_COLUMN_WIDTHS), 2):
-        header_2.extend(
-            [
-                _docx_cell("2019", bold=True, width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[index]),
-                _docx_cell("2024", bold=True, width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[index + 1]),
-            ]
-        )
+    column_index = 2
+    for _, _, years in MANUSCRIPT_TABLE_MEASURES:
+        for year in years:
+            header_2.append(
+                _docx_cell(str(year), bold=True, width=DOCX_MANUSCRIPT_COLUMN_WIDTHS[column_index])
+            )
+            column_index += 1
 
     table_rows = [_docx_row(header_1), _docx_row(header_2)]
     for row in rows:
@@ -1750,6 +1775,7 @@ def export_correlation_tables_docx(
         "Table 1. Political party by mortality, health and disability",
         [
             "Cells show correlation coefficient (p value). ASMR denotes age-standardised mortality rate per 100,000 population.",
+            "Column years denote election years. Premature ASMR (2021) uses deaths registered in 2021 and is compared with 2019 voting only; no 2024 boundary proxy is used.",
             "Party rows are vote shares except voter turnout; p values <0.001 are shown as <0.001.",
         ],
         _docx_manuscript_table(manuscript_rows),

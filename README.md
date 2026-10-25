@@ -79,7 +79,7 @@ This outcome uses deaths registered in 2021 and is linked by constituency code
 to the 2019 election only. No rate is imputed for the revised 2024 boundaries.
 The existing 2019/2024 ASMR outcomes and figures are unchanged; the additional
 Spearman/Pearson coefficients and p values appear in the full supplementary
-Word table, not the four-outcome manuscript table.
+and manuscript Word tables. Both are also displayed inline in Section 4.
 
 ## Outputs
 

@@ -2,6 +2,8 @@ import hashlib
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -119,6 +121,60 @@ class PrematureCorrelationTests(unittest.TestCase):
         self.assertEqual(len(new_rows), 4)
         self.assertEqual(set(new_rows["Election year"]), {"2019"})
         self.assertTrue(new_rows["Labour"].str.contains(r"\(.+\)").all())
+
+    def test_manuscript_table_includes_2021_for_2019_only(self):
+        with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
+            r19, p19 = helpers.make_summary_tables(self.frame, self.frame, "2019")
+        r24, p24 = helpers.make_summary_tables(self.frame, self.frame, "2024")
+        table = helpers.make_manuscript_correlation_p_value_table(r19, p19, r24, p24)
+        self.assertEqual(table.shape, (13, 12))
+        for sex in ["female", "male"]:
+            label = f"Premature ASMR (2021), {sex}"
+            self.assertIn((label, "2019"), table.columns)
+            self.assertNotIn((label, "2024"), table.columns)
+            self.assertEqual(table.iloc[-1][(label, "2019")], "3")
+            for statistic, row in [("Spearman", 1), ("Pearson", 7)]:
+                variable = "PrematureASMR2021_f" if sex == "female" else "PrematureASMR2021_m"
+                coefficient = helpers._summary_table_row(r19, statistic, variable)["Lab PC"]
+                p_value = helpers._summary_table_row(p19, statistic, variable)["Lab PC"]
+                expected = helpers._format_manuscript_coefficient_with_p_value(coefficient, p_value)
+                self.assertEqual(table.iloc[row][(label, "2019")], expected)
+            self.assertEqual(table.iloc[4][(label, "2019")], "")
+            self.assertEqual(table.iloc[10][(label, "2019")], "")
+        self.assertEqual(table.iloc[-1][("ASMR (female)", "2019")], "4")
+
+    def test_manuscript_docx_headers_and_grid_match_the_new_columns(self):
+        with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
+            r19, p19 = helpers.make_summary_tables(self.frame, self.frame, "2019")
+        r24, p24 = helpers.make_summary_tables(self.frame, self.frame, "2024")
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(helpers, "TABLES_DIR", Path(directory)), patch.object(helpers, "_ensure_output_dirs"):
+                path = helpers.export_correlation_tables_docx(r19, p19, r24, p24)
+            with zipfile.ZipFile(path) as archive:
+                root = ET.fromstring(archive.read("word/document.xml"))
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        table = root.find(".//w:tbl", ns)
+        grid = table.findall("w:tblGrid/w:gridCol", ns)
+        self.assertEqual(len(grid), 12)
+        self.assertEqual(sum(int(col.attrib[f"{{{ns['w']}}}w"]) for col in grid), 16450)
+        rows = table.findall("w:tr", ns)
+        self.assertEqual(len(rows), 15)
+        labels = [node.text for node in rows[0].findall(".//w:t", ns)]
+        self.assertIn("Premature ASMR (2021), female", labels)
+        self.assertIn("Premature ASMR (2021), male", labels)
+        year_labels = [node.text or "" for node in rows[1].findall(".//w:t", ns)]
+        self.assertEqual(year_labels, ["", "", "2019", "2024", "2019", "2024",
+                                       "2019", "2019", "2019", "2024", "2019", "2024"])
+        for row in rows[1:]:
+            self.assertEqual(len(row.findall("w:tc", ns)), 12)
+
+    def test_portrait_rows_leave_unavailable_2024_comparisons_blank(self):
+        with patch.object(helpers, "make_premature_asmr_2021", return_value=self.rates):
+            r19, p19 = helpers.make_summary_tables(self.frame, self.frame, "2019")
+        r24, p24 = helpers.make_summary_tables(self.frame, self.frame, "2024")
+        rows = helpers.make_portrait_correlation_p_value_rows(r19, p19, r24, p24)
+        self.assertEqual(len(rows), 78)
+        self.assertTrue(all(row[4] == "" for row in rows[26:52]))
 
 
 if __name__ == "__main__":
