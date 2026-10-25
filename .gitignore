@@ -159,7 +159,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Raw inputs, including the original ASMR workbook and timestamped snapshots.
 data/
+/data/raw/mortality/snapshots/
 .idea
 data/shapefile
 paper/*

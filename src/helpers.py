@@ -1,8 +1,10 @@
 import hashlib
 import json
+import tempfile
 import time
 import urllib.parse
 import urllib.request
+import warnings
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -132,11 +134,12 @@ RAW_DATA_SOURCES = [
     },
     {
         "path": "data/raw/mortality/pcondeathspopulations20192024.xlsx",
+        "snapshot_path": "data/raw/mortality/snapshots/pcondeathspopulations20192024_20261025T083750Z.xlsx",
         "sha256": "f706b80f2144be283f31cee5eaaf4cdfe9dd49d5d10dacc32e4bfcbe8125cd39",
         "size": 222513,
         "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/3175numbersandagestandardisedmortalityratesofdeathspopulationcountsbysexandparliamentaryconstituencyenglandandwalesdeathsregisteredin2019and2024",
         "download": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/3175numbersandagestandardisedmortalityratesofdeathspopulationcountsbysexandparliamentaryconstituencyenglandandwalesdeathsregisteredin2019and2024/pcondeathspopulations20192024.xlsx",
-        "note": "ONS ad hoc release 3175.",
+        "note": "ONS ad hoc release 3175. Analysis uses the snapshot archived on 2026-10-25 (UTC).",
     },
     {
         "path": "data/raw/voting/HoC-GE2019-results-by-constituency.xlsx",
@@ -377,10 +380,84 @@ def _raw_data_file_specs():
     return specs
 
 
+def _mortality_source():
+    return next(spec for spec in RAW_DATA_SOURCES if "snapshot_path" in spec)
+
+
+def _fetch_mortality_download(url):
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.read()
+
+
+def ensure_mortality_snapshot(download=True, check_remote=True):
+    """Reuse the pinned ASMR snapshot; upstream changes warn but never replace it.
+
+    Call once at notebook startup to check ONS. Readers use check_remote=False
+    so repeated sheet reads do not trigger repeated downloads. The timestamp in
+    snapshot_path identifies the archived version, not the mortality year.
+    """
+    spec = _mortality_source()
+    snapshot = PROJECT_ROOT / spec["snapshot_path"]
+    remote_data = None
+    if not snapshot.exists():
+        original = PROJECT_ROOT / spec["path"]
+        if original.exists():
+            _verify_file(original, spec["sha256"], spec["size"])
+            data = original.read_bytes()
+        elif download:
+            remote_data = _fetch_mortality_download(spec["download"])
+            data = remote_data
+        else:
+            raise FileNotFoundError(f"Missing pinned ASMR snapshot: {snapshot}")
+
+        # Verify a temporary file before publishing it as the pinned snapshot.
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=snapshot.parent) as temporary_dir:
+            candidate = Path(temporary_dir) / snapshot.name
+            candidate.write_bytes(data)
+            _verify_file(candidate, spec["sha256"], spec["size"])
+            candidate.replace(snapshot)
+
+    _verify_file(snapshot, spec["sha256"], spec["size"])
+    if check_remote:
+        try:
+            if remote_data is None:
+                remote_data = _fetch_mortality_download(spec["download"])
+        except (OSError, TimeoutError) as exc:
+            warnings.warn(
+                f"Could not check the ONS ASMR download: {exc}. "
+                f"Using verified snapshot {snapshot}; upstream changes are unknown.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            remote_hash = hashlib.sha256(remote_data).hexdigest()
+            if remote_hash != spec["sha256"]:
+                warnings.warn(
+                    f"ONS ASMR download has changed at {spec['download']}. "
+                    f"Remote SHA-256: {remote_hash}; pinned SHA-256: {spec['sha256']}. "
+                    f"Continuing to use {snapshot}; the snapshot has not been replaced.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            else:
+                print(f"ONS ASMR download matches the pinned SHA-256: {remote_hash}.")
+    return snapshot
+
+
+def mortality_data_path():
+    """Resolve and verify the snapshot for every ASMR reader, without an online check."""
+    return ensure_mortality_snapshot(check_remote=False)
+
+
 def ensure_raw_data(download=True, verify=True):
     """Fetch missing direct-download inputs and verify every raw file used by the analysis."""
     failures = []
     for spec in _raw_data_file_specs():
+        if "snapshot_path" in spec:
+            ensure_mortality_snapshot(download=download, check_remote=download)
+            continue
         path = PROJECT_ROOT / spec["path"]
         if download and not path.exists():
             download_url = spec.get("download")
@@ -407,7 +484,8 @@ def ensure_raw_data(download=True, verify=True):
 
     if verify:
         for spec in _raw_data_file_specs():
-            _verify_file(PROJECT_ROOT / spec["path"], spec["sha256"], spec["size"])
+            path = PROJECT_ROOT / spec.get("snapshot_path", spec["path"])
+            _verify_file(path, spec["sha256"], spec["size"])
         validate_raw_data_schema()
 
     print("Raw data files are present and match the pinned checksums.")
@@ -423,7 +501,8 @@ def validate_raw_data_schema():
         ("data/raw/life_expectancy/trends_in_sii.xlsx", "Sheet1", 36, ["timeperiod", "sex", "value"], {}),
     ]
     for rel_path, sheet_name, rows, columns, read_kwargs in expected:
-        df = pd.read_excel(PROJECT_ROOT / rel_path, sheet_name=sheet_name, **read_kwargs)
+        path = mortality_data_path() if rel_path == _mortality_source()["path"] else PROJECT_ROOT / rel_path
+        df = pd.read_excel(path, sheet_name=sheet_name, **read_kwargs)
         if len(df) != rows:
             raise ValueError(f"{rel_path} has {len(df)} rows; expected {rows}.")
         missing = [column for column in columns if column not in df.columns]
@@ -482,7 +561,9 @@ def raw_data_sources_markdown(sources=None, include_shapefile_components=True):
         "|---|---|---|---|---|",
     ]
     for spec in sources:
-        label = spec["path"].split("/")[-1]
+        local_path = spec.get("snapshot_path", spec["path"])
+        label = Path(local_path).name
+        local_link = f"[{label}](../{urllib.parse.quote(local_path)})"
         source = spec.get("source")
         source_link = f"[source]({source})" if source else ""
         download = spec.get("download")
@@ -501,7 +582,7 @@ def raw_data_sources_markdown(sources=None, include_shapefile_components=True):
         else:
             data_href = "pinned local file"
         rows.append(
-            f"| {label} | `{spec['path']}` | {source_link} | {data_href} | `{spec['sha256']}` |"
+            f"| {label} | {local_link} | {source_link} | {data_href} | `{spec['sha256']}` |"
         )
     if include_shapefile_components:
         for path, (sha256, _) in RAW_DATA_SOURCE_EXTRA_FILES.items():
@@ -880,14 +961,14 @@ def make_merged(year):
         RAW_DIR / "voting" / f"HoC-GE{year}-results-by-constituency.xlsx",
         sheet_name="Data",
     )
-    mortality_fname = "pcondeathspopulations20192024.xlsx"
+    mortality_path = mortality_data_path()
     df_mortality_m = pd.read_excel(
-        RAW_DIR / "mortality" / mortality_fname,
+        mortality_path,
         sheet_name=f"Table {sheet_start}",
         skiprows=5,
     ).rename({"ASMR": "ASMR_m"}, axis=1)
     df_mortality_f = pd.read_excel(
-        RAW_DIR / "mortality" / mortality_fname,
+        mortality_path,
         sheet_name=f"Table {sheet_start + 1}",
         skiprows=5,
     ).rename({"ASMR": "ASMR_f"}, axis=1)
@@ -1002,7 +1083,7 @@ def _mortality_sheet(year, sex):
 
 def _get_asmr_ci(year, constituency, sex):
     df = pd.read_excel(
-        RAW_DIR / "mortality" / "pcondeathspopulations20192024.xlsx",
+        mortality_data_path(),
         sheet_name=_mortality_sheet(year, sex),
         skiprows=5,
     )

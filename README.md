@@ -55,6 +55,19 @@ The raw inputs live under `data/raw/`, and constituency boundary files live unde
 
 Large raw data files are kept separate from the analysis code; the notebook fails early if a missing or changed input would alter the analysis.
 
+ASMR uses the fixed, checksum-verified workbook snapshot
+`data/raw/mortality/snapshots/pcondeathspopulations20192024_20261025T083750Z.xlsx`.
+At notebook startup, `ensure_mortality_snapshot()` checks the current ONS
+download against the pinned SHA-256 and warns if it differs. The analysis
+continues to use the snapshot; an online update never replaces it. If the
+online check is unavailable, a warning is shown and the verified local copy
+is used. A missing snapshot is restored from the original local workbook or
+the download only if it matches the pinned checksum. A damaged snapshot
+stops execution. For offline use, call
+`ensure_mortality_snapshot(download=False, check_remote=False)` instead.
+The main notebook links to the snapshot and the ONS download. Local data,
+including snapshots, are ignored by Git.
+
 ## Outputs
 
 Running the notebook regenerates:
