@@ -1833,7 +1833,7 @@ def plot_scatters(df_2019, df_2024, config_list):
     ax4 = fig.add_subplot(gs[1, 1])
     axes = [ax1, ax2, ax3, ax4]
 
-    color_mapping = {"Lab": "#E4003B", "Con": "#0087DC", "Other": "lightgrey"}
+    color_mapping = {"Lab": "#E66859", "Con": "#416FA0", "Other": "lightgrey"}
     df_2019["color"] = df_2019["first_party_3"].map(color_mapping)
     df_2024["color"] = df_2024["first_party_3"].map(color_mapping)
     party_column, fallback_label, annotate_leaders = config_list
@@ -1865,7 +1865,7 @@ def plot_scatters(df_2019, df_2024, config_list):
         handles=legend_elements,
         loc="upper left" if party_column == "Lab PC" else "upper right",
         frameon=True,
-        fontsize=10,
+        fontsize=9,
         framealpha=1,
         facecolor="w",
         edgecolor=(0, 0, 0, 1),
