@@ -1,0 +1,5 @@
+Election year,Weights,N,Initial components,Final components,Isolated-area links added,Minimum neighbours,Maximum neighbours,Mean neighbours,Weights SHA-256
+2019,Queen + isolated-area nearest neighbour,532,2,1,"{""E14000762"": ""E14000713""}",1,14,5.195488721804511,8d9a0a87fa73ae7a68d100e435225eedc8a41e2a3fbdcdd9686778326e83f7e9
+2019,Symmetric 4-nearest neighbours,532,1,1,{},4,9,5.112781954887218,62b947440f02a9c05521ec574f13a81848393f86effd8265189c73811f5ac5ab
+2024,Queen + isolated-area nearest neighbour,542,2,2,{},1,11,5.202952029520295,1e26a409ce5af50ba27d1e5adde4e317bc9ac867971577193b57f14f46941d2c
+2024,Symmetric 4-nearest neighbours,542,1,1,{},4,9,5.121771217712177,1c37c6a6649df08fdfb125946431c0d0c1b812863e157dd086f9f33e1472991d

@@ -1,0 +1,14 @@
+{
+  "description": "SHA-256 of robustness CSVs produced from the original local inputs before switching to requests-only downloads. Do not regenerate to accept changed results.",
+  "files": {
+    "spatial_coverage.csv": "6d2734139dd62e29ba3ffb362d41daf3214649e006ae4f18fd9b56e30233be39",
+    "spatial_error_models.csv": "d7f8995dd443103bf0b6b9375075a73f05da188ad257cc9b4e2069e7c33f1185",
+    "spatial_leave_one_region_out.csv": "cfc0dcafd190adbe66551251b6a35a7025c1ff53cdb67e1e481728415fe12ea0",
+    "spatial_leave_one_region_out_summary.csv": "ca186852b62f2e21c1a6090a86657f6cd41bf9e899e323709c7bd0657ad09640",
+    "spatial_moran_diagnostics.csv": "e4ed35626064065b298c31cf297969aff00e1273c732c29562ca30975a2300f1",
+    "spatial_regional_models.csv": "4b56fe52a6786ca064fc923b7bdac6d15ef6488b6ea7ac3c12c3a4a93360d0e2",
+    "spatial_weights.csv": "e7a6f8c4df135004f35b6329c2d380375bf920847841b7a2463e7abf0659b9ea",
+    "spatial_weights_edges.csv": "c9219d6d940f2a022b43e6817606c267bdf8bdd9a5ccc1368d90ce119d696ea9",
+    "zero_vote_robustness.csv": "a119af9371c5b7d68a94300f221c473344e92b14d6a350e5d1eb69f912bacb90"
+  }
+}

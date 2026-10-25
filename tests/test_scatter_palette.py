@@ -31,7 +31,12 @@ class ScatterPaletteTests(unittest.TestCase):
                     patch.object(helpers, "_save_figure") as save, contextlib.redirect_stdout(io.StringIO()):
                 figure = helpers.plot_scatters(frame, frame, [party, party, False])
                 self.assertEqual(len(figure.axes), 4)
+                self.assertEqual([axis.get_title(loc="right") for axis in figure.axes],
+                                 ["2019 | Female", "2019 | Male", "2024 | Female", "2024 | Male"])
                 for axis, outcome in zip(figure.axes, ["ASMR_f", "ASMR_m"] * 2):
+                    self.assertEqual(axis.yaxis.get_major_formatter()(1000), "1,000")
+                    self.assertEqual(axis._left_title.get_fontweight(), "bold")
+                    self.assertEqual(axis._left_title.get_fontsize(), 19)
                     np.testing.assert_allclose(axis.collections[0].get_facecolors(), expected)
                     np.testing.assert_array_equal(
                         axis.collections[0].get_offsets(), frame[[party, outcome]].to_numpy(),

@@ -2,7 +2,6 @@ import hashlib
 import sys
 import tempfile
 import unittest
-import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -59,7 +58,7 @@ class MortalitySnapshotTests(unittest.TestCase):
         self.assertEqual(self.original.read_bytes(), self.data)
 
     def test_offline_failure_warns_and_keeps_verified_snapshot(self):
-        with patch.object(helpers, "_fetch_mortality_download", side_effect=urllib.error.URLError("offline")):
+        with patch.object(helpers, "_fetch_mortality_download", side_effect=helpers.requests.ConnectionError("offline")):
             with self.assertWarnsRegex(RuntimeWarning, "upstream changes are unknown"):
                 path = helpers.ensure_mortality_snapshot()
         self.assertEqual(path.read_bytes(), self.data)
@@ -107,10 +106,11 @@ class MortalitySnapshotTests(unittest.TestCase):
         self.assertIn(self.spec["sha256"], markdown)
 
     def test_remote_request_has_finite_timeout(self):
-        with patch.object(helpers.urllib.request, "urlopen") as urlopen:
-            urlopen.return_value.__enter__.return_value.read.return_value = self.data
+        with patch.object(helpers.requests, "get") as get:
+            get.return_value.__enter__.return_value.content = self.data
             self.assertEqual(helpers._fetch_mortality_download(self.spec["download"]), self.data)
-        self.assertEqual(urlopen.call_args.kwargs["timeout"], 30)
+        self.assertEqual(get.call_args.kwargs["timeout"], 30)
+        get.return_value.__enter__.return_value.raise_for_status.assert_called_once()
 
 
 if __name__ == "__main__":

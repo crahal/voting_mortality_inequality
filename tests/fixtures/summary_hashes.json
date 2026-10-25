@@ -1,0 +1,18 @@
+{
+  "serialization": "table.round(12).to_csv(index=False), UTF-8, SHA-256",
+  "historical_commits": ["4ec7a45", "876b65c"],
+  "years": {
+    "2019": {
+      "coefficients": "c207ad1f89f0126cb8dd92e906895fcf10dc593dea251a1f8d7f289dfed50fbf",
+      "coefficients_without_2021": "97b368775048aafee48d17974b71b770163c420eed12b0fc8d7ebf42c724895b",
+      "p_values": "9c6df4b0655c395582213ece5b3dc2f94d0ea0b02096895e72b80f2e62564ef2",
+      "p_values_without_2021": "771f221f3a1295856377c1b6285fe8f02ea4c2f6828a94d0429904f28f41615b"
+    },
+    "2024": {
+      "coefficients": "2252b88fb687769d70bb495898a3a5ec0a6b9e4100b42ab521239372f175e729",
+      "coefficients_without_2021": "2252b88fb687769d70bb495898a3a5ec0a6b9e4100b42ab521239372f175e729",
+      "p_values": "57f3247df6dc72f1f157b945c6b19d21deda08553b41fb01cfa57167233dd1d8",
+      "p_values_without_2021": "57f3247df6dc72f1f157b945c6b19d21deda08553b41fb01cfa57167233dd1d8"
+    }
+  }
+}

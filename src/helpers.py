@@ -1,9 +1,9 @@
 import hashlib
+import io
 import json
 import tempfile
 import time
 import urllib.parse
-import urllib.request
 import warnings
 import zipfile
 from pathlib import Path
@@ -12,16 +12,21 @@ from xml.sax.saxutils import escape
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.gridspec as grid_spec
+import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
+import requests
 import seaborn as sns
 from matplotlib.lines import Line2D
 from matplotlib.offsetbox import AnchoredText
 from matplotlib.patches import Patch
 from scipy.stats import pearsonr, spearmanr
 from shapely.geometry import MultiPoint, Point
+
+from boundary_sources import boundary_download_url, restore_boundary_attributes
+from election_sources import ELECTION_SOURCES, read_election_results
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -89,15 +94,15 @@ RAW_DATA_SOURCES = [
         "size": 9695427,
         "source": "https://www.gov.uk/government/statistics/english-indices-of-deprivation-2019",
         "download": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/845345/File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv",
-        "normalize_newlines": True,
-        "note": "Downloaded CSV is normalized to LF line endings before checksum verification.",
+        "normalize_csv": True,
+        "note": "Re-serialize with pandas and LF line endings to reproduce the original cached CSV bytes; no values change.",
     },
     {
         "path": "data/raw/deprivation/deprivation_2025.xlsx",
         "sha256": "da152cbb4f976f71ea2da80e9dc8c8423cd4a4ea7a19b79db7461784175e8b03",
         "size": 779722,
-        "source": "https://commonslibrary.parliament.uk/research-briefings/cbp-7327/",
-        "download": "https://researchbriefings.files.parliament.uk/documents/CBP-7327/Deprivation-in-English-constituencies.xlsx",
+        "source": "https://commonslibrary.parliament.uk/research-briefings/cbp-10526/",
+        "download": "https://researchbriefings.files.parliament.uk/documents/CBP-10526/CBP-10526.xlsx",
         "note": "House of Commons Library constituency deprivation workbook.",
     },
     {
@@ -115,22 +120,6 @@ RAW_DATA_SOURCES = [
         "source": "https://geoportal.statistics.gov.uk/",
         "download": "arcgis:oa11_pcon11_lookup",
         "note": "ONS ArcGIS OA11-to-PCON11 lookup cached as CSV.",
-    },
-    {
-        "path": "data/raw/life_expectancy/HID_data_Life expectancy and mortality.csv",
-        "sha256": "5b7eeda2808cb354386a112ccfc7274a877ce669590b4ee240c39ca803b07bdc",
-        "size": 5618322,
-        "source": "https://fingertips.phe.org.uk/profile/health-profiles",
-        "download": None,
-        "note": "OHID Fingertips extract used for the temporal context figure.",
-    },
-    {
-        "path": "data/raw/life_expectancy/trends_in_sii.xlsx",
-        "sha256": "8c9ad8da8b868579e3119b147cbfc47b4abcf6e84878aaa65b9c0200f5df8770",
-        "size": 10711,
-        "source": "https://fingertips.phe.org.uk/profile/health-profiles",
-        "download": None,
-        "note": "Local workbook of SII trend data used for the temporal context figure.",
     },
     {
         "path": "data/raw/mortality/pcondeathspopulations20192024.xlsx",
@@ -153,36 +142,28 @@ RAW_DATA_SOURCES = [
         "note": "ONS ad hoc release 1961: premature deaths registered in 2021, on pre-2024 constituency boundaries. Separate from the 2019/2024 ASMR outcomes.",
     },
     {
-        "path": "data/raw/voting/HoC-GE2019-results-by-constituency.xlsx",
-        "sha256": "18a183e5dbf243c898ebcaed2df7d5b86fe18f2d7fb0ba9af203e26e3a76e36a",
-        "size": 164288,
-        "source": "https://commonslibrary.parliament.uk/research-briefings/cbp-8749/",
-        "download": "https://researchbriefings.files.parliament.uk/documents/CBP-8749/HoC-GE2019-results-by-constituency.xlsx",
-        "note": "House of Commons Library detailed constituency results.",
+        **ELECTION_SOURCES[2019],
     },
     {
-        "path": "data/raw/voting/HoC-GE2024-results-by-constituency.xlsx",
-        "sha256": "41c220a08c662f60750477e60c672149ad0b126bf3d7cedddea1b8f1748c05bc",
-        "size": 155348,
-        "source": "https://commonslibrary.parliament.uk/research-briefings/cbp-10009/",
-        "download": "https://researchbriefings.files.parliament.uk/documents/CBP-10009/HoC-GE2024-results-by-constituency.xlsx",
-        "note": "House of Commons Library detailed constituency results.",
+        **ELECTION_SOURCES[2024],
     },
     {
         "path": "data/shapefile/2019/WPC_Dec_2019_GCB_UK.shp",
         "sha256": "ae65b1d2eae1964f0f9515737e68225a414bfc71ce14d7c568e547bb2e0e5a20",
         "size": 9189180,
-        "source": "https://geoportal.statistics.gov.uk/datasets/ons::wpc-dec-2019-generalised-clipped-boundaries-uk",
-        "download": None,
-        "note": "ONS 2019 Westminster Parliamentary Constituency boundary shapefile component.",
+        "source": "https://geoportal.statistics.gov.uk/datasets/11705b3f6efd4cc092580e269a86500f_0",
+        "download": boundary_download_url(2019),
+        "boundary_year": 2019,
+        "note": "ONS archive; restore original DBF serialization and metadata, then verify every original component hash.",
     },
     {
         "path": "data/shapefile/2024/PCON_JULY_2024_UK_BFC.shp",
         "sha256": "b2554563646912c1d86453ea86eaf8ad906aaaf6c337d5112a436d68ffae91f2",
         "size": 142526368,
-        "source": "https://geoportal.statistics.gov.uk/datasets/ons::pcon-july-2024-boundaries-uk-bfc",
-        "download": None,
-        "note": "ONS 2024 Parliamentary Constituency full-resolution clipped boundary shapefile component.",
+        "source": "https://geoportal.statistics.gov.uk/datasets/0d698c9712de4afcac9377367d831c1a_0",
+        "download": boundary_download_url(2024),
+        "boundary_year": 2024,
+        "note": "ONS archive; restore original DBF serialization and metadata, then verify every original component hash.",
     },
 ]
 
@@ -267,15 +248,12 @@ def _sha256(path):
 def _download_raw_file(url, path, normalize_newlines=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + ".download")
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0"},
-    )
     try:
-        with urllib.request.urlopen(request) as response:
-            data = response.read()
-    except Exception as exc:
-        raise RuntimeError(f"Could not download {url}") from exc
+        with requests.get(url, timeout=120) as response:
+            response.raise_for_status()
+            data = response.content
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Could not download {url}: {exc}") from exc
     if normalize_newlines:
         data = data.replace(b"\r\n", b"\n")
     tmp_path.write_bytes(data)
@@ -283,19 +261,14 @@ def _download_raw_file(url, path, normalize_newlines=False):
 
 
 def _read_json_url(url, payload=None):
-    data = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0",
-        },
-        method="POST" if payload is not None else "GET",
+    kwargs = {"timeout": 120, "headers": {"Accept": "application/json"}}
+    response = (
+        requests.get(url, **kwargs) if payload is None
+        else requests.post(url, json=payload, **kwargs)
     )
-    with urllib.request.urlopen(request) as response:
-        return json.loads(response.read().decode("utf-8"))
+    with response:
+        response.raise_for_status()
+        return response.json()
 
 
 def _download_ons_filter_output(download_id, path):
@@ -399,9 +372,9 @@ def _mortality_source(dataset="2019_2024"):
 
 
 def _fetch_mortality_download(url):
-    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return response.read()
+    with requests.get(url, timeout=30) as response:
+        response.raise_for_status()
+        return response.content
 
 
 def ensure_mortality_snapshot(download=True, check_remote=True, dataset="2019_2024"):
@@ -467,10 +440,59 @@ def mortality_data_path(dataset="2019_2024"):
     return ensure_mortality_snapshot(check_remote=False, dataset=dataset)
 
 
+def _fetch_pinned_source(spec):
+    """Publish a download only after its analysis bytes match the pinned input."""
+    path = PROJECT_ROOT / spec["path"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=path.parent, prefix=".fetch-") as directory:
+        staged = Path(directory) / path.name
+        recipe = spec.get("download")
+        if not recipe:
+            raise FileNotFoundError(f"No download recipe for {spec['path']}")
+        if "boundary_year" in spec:
+            _download_raw_file(recipe, staged.with_suffix(".zip"))
+            # Extract only the named components, never archive-supplied paths.
+            with zipfile.ZipFile(staged.with_suffix(".zip")) as archive:
+                for suffix in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
+                    name = path.with_suffix(suffix).name
+                    matches = [entry for entry in archive.infolist()
+                               if Path(entry.filename).name == name]
+                    if len(matches) != 1 or matches[0].file_size > 200_000_000:
+                        raise ValueError(f"Invalid boundary archive member: {name}")
+                    staged.with_suffix(suffix).write_bytes(archive.read(matches[0]))
+            restore_boundary_attributes(staged.parent, spec["boundary_year"])
+            component_specs = [item for item in _raw_data_file_specs()
+                               if Path(item["path"]).parent == Path(spec["path"]).parent]
+        else:
+            if recipe.startswith("arcgis:"):
+                _download_arcgis_lookup(recipe, staged)
+            elif recipe.startswith("ons_filter_output:"):
+                _download_ons_filter_output(recipe, staged)
+            elif recipe.startswith("ons_custom_filter:"):
+                _download_ons_custom_filter(recipe, staged)
+            else:
+                _download_raw_file(recipe, staged)
+            if spec.get("normalize_csv"):
+                frame = pd.read_csv(io.BytesIO(staged.read_bytes()))
+                staged.write_bytes(frame.to_csv(index=False, lineterminator="\n").encode("utf-8"))
+            component_specs = [spec]
+        for item in component_specs:
+            candidate = staged.parent / Path(item["path"]).name
+            _verify_file(candidate, item["sha256"], item["size"])
+        for item in component_specs:
+            destination = PROJECT_ROOT / item["path"]
+            if destination.exists():
+                _verify_file(destination, item["sha256"], item["size"])
+        for item in component_specs:
+            destination = PROJECT_ROOT / item["path"]
+            if not destination.exists():
+                (staged.parent / destination.name).replace(destination)
+
+
 def ensure_raw_data(download=True, verify=True):
-    """Fetch missing direct-download inputs and verify every raw file used by the analysis."""
+    """Fetch missing inputs, reject changed data, then validate the complete input set."""
     failures = []
-    for spec in _raw_data_file_specs():
+    for spec in RAW_DATA_SOURCES:
         if "snapshot_path" in spec:
             ensure_mortality_snapshot(
                 download=download, check_remote=download,
@@ -478,28 +500,21 @@ def ensure_raw_data(download=True, verify=True):
             )
             continue
         path = PROJECT_ROOT / spec["path"]
-        if download and not path.exists():
-            download_url = spec.get("download")
-            if isinstance(download_url, str) and download_url.startswith("arcgis:"):
-                _download_arcgis_lookup(download_url, path)
-            elif isinstance(download_url, str) and download_url.startswith("ons_filter_output:"):
-                _download_ons_filter_output(download_url, path)
-            elif isinstance(download_url, str) and download_url.startswith("ons_custom_filter:"):
-                _download_ons_custom_filter(download_url, path)
-            elif download_url:
-                _download_raw_file(
-                    download_url,
-                    path,
-                    normalize_newlines=spec.get("normalize_newlines", False),
-                )
-            else:
-                failures.append(
-                    f"{spec['path']} is missing and has no stable direct-download URL. "
-                    f"Source: {spec.get('source', 'not recorded')}"
-                )
+        missing = not path.exists()
+        if "boundary_year" in spec:
+            missing = missing or any(
+                not (PROJECT_ROOT / item).exists() for item in RAW_DATA_SOURCE_EXTRA_FILES
+                if Path(item).parent == Path(spec["path"]).parent
+            )
+        if download and missing:
+            try:
+                print(f"Fetching {spec['path']} ...", flush=True)
+                _fetch_pinned_source(spec)
+            except (OSError, RuntimeError, ValueError, requests.RequestException, zipfile.BadZipFile) as exc:
+                failures.append(f"{spec['path']}: {exc}")
 
     if failures:
-        raise FileNotFoundError("\n".join(failures))
+        raise RuntimeError("Required inputs could not be fetched and verified:\n" + "\n".join(failures))
 
     if verify:
         for spec in _raw_data_file_specs():
@@ -511,13 +526,12 @@ def ensure_raw_data(download=True, verify=True):
 
 
 def validate_raw_data_schema():
+    for year in ELECTION_SOURCES:
+        read_election_results(PROJECT_ROOT, year)
     expected = [
-        ("data/raw/voting/HoC-GE2019-results-by-constituency.xlsx", "Data", 650, ["ONS ID", "First party", "Valid votes", "BRX"], {}),
-        ("data/raw/voting/HoC-GE2024-results-by-constituency.xlsx", "Data", 650, ["ONS ID", "First party", "Valid votes", "RUK"], {}),
         ("data/raw/mortality/pcondeathspopulations20192024.xlsx", "Table 1", 573, ["Parliamentary Constituency Code ", "ASMR"], {"skiprows": 5}),
         ("data/raw/mortality/pcondeathspopulations20192024.xlsx", "Table 3", 575, ["Parliamentary Constituency Code ", "ASMR"], {"skiprows": 5}),
         ("data/raw/deprivation/deprivation_2025.xlsx", "Data_constituencies", 543, ["ONSConstID", "Health deprivation and disability"], {}),
-        ("data/raw/life_expectancy/trends_in_sii.xlsx", "Sheet1", 36, ["timeperiod", "sex", "value"], {}),
     ]
     for sheet in ["1", "2"]:
         expected.append((
@@ -542,7 +556,6 @@ def validate_raw_data_schema():
         "data/raw/census/2019_health.csv": (1719, ["Westminster Parliamentary constituencies Code", "General health (3 categories)", "Observation"]),
         "data/raw/census/2024_health.csv": (1725, ["Post-2019 Westminster Parliamentary constituencies Code", "General health (3 categories)", "Observation"]),
         "data/raw/deprivation/File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv": (32844, ["LSOA code (2011)", "Health Deprivation and Disability Score"]),
-        "data/raw/life_expectancy/HID_data_Life expectancy and mortality.csv": (50346, ["Indicator", "Category", "Time period", "Value"]),
     }
     for rel_path, (rows, columns) in csv_expected.items():
         df = pd.read_csv(PROJECT_ROOT / rel_path)
@@ -582,8 +595,8 @@ def validate_raw_data_schema():
 def raw_data_sources_markdown(sources=None, include_shapefile_components=True):
     sources = RAW_DATA_SOURCES if sources is None else sources
     shapefile_sources = {
-        "data/shapefile/2019/": "https://geoportal.statistics.gov.uk/datasets/ons::wpc-dec-2019-generalised-clipped-boundaries-uk",
-        "data/shapefile/2024/": "https://geoportal.statistics.gov.uk/datasets/ons::pcon-july-2024-boundaries-uk-bfc",
+        "data/shapefile/2019/": boundary_download_url(2019),
+        "data/shapefile/2024/": boundary_download_url(2024),
     }
     rows = [
         "| Dataset | Pinned local file | Source | Data href or fetch recipe | SHA256 |",
@@ -619,7 +632,7 @@ def raw_data_sources_markdown(sources=None, include_shapefile_components=True):
                 source for prefix, source in shapefile_sources.items() if path.startswith(prefix)
             )
             rows.append(
-                f"| {path.split('/')[-1]} | `{path}` | [source]({source}) | pinned local file | `{sha256}` |"
+                f"| {path.split('/')[-1]} | `{path}` | [boundary archive]({source}) | verified bundle component | `{sha256}` |"
             )
     return "\n".join(rows)
 
@@ -630,6 +643,7 @@ def main_analysis_data_sources_markdown():
         "data/raw/deprivation/",
         "data/raw/mortality/",
         "data/raw/voting/",
+        "data/shapefile/",
     )
     sources = [spec for spec in RAW_DATA_SOURCES if spec["path"].startswith(main_prefixes)]
     return raw_data_sources_markdown(sources, include_shapefile_components=False)
@@ -673,8 +687,7 @@ def _read_arcgis_lookup(cache_path, service_url, fields):
                 "f": "json",
             }
         )
-        with urllib.request.urlopen(f"{service_url}?{params}") as response:
-            payload = json.load(response)
+        payload = _read_json_url(f"{service_url}?{params}")
         if "error" in payload:
             raise RuntimeError(payload["error"])
         features = payload.get("features", [])
@@ -692,47 +705,12 @@ def _read_arcgis_lookup(cache_path, service_url, fields):
 
 def make_2019_health_deprivation_from_lsoas():
     deprivation_path = RAW_DIR / "deprivation"
-    iod_lsoa_candidates = [
-        deprivation_path / "File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv",
-        deprivation_path / "IoD2019_Scores_Ranks_Deciles_and_Population_Denominators.csv",
-        deprivation_path / "IoD2019.csv",
-    ]
-    iod_lsoa_url = (
-        "https://assets.publishing.service.gov.uk/government/uploads/"
-        "system/uploads/attachment_data/file/845345/"
-        "File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv"
+    # All three inputs are fetched and checksum-verified at notebook startup.
+    iod_lsoa = pd.read_csv(
+        deprivation_path / "File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv"
     )
-    oa_lsoa_cache = deprivation_path / "oa11_lsoa11_lookup.csv"
-    oa_pcon_cache = deprivation_path / "oa11_pcon11_lookup.csv"
-    oa_lsoa_service_url = (
-        "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/"
-        "OA11_LSOA11_MSOA11_LAD11_EW_LUv2_b3fe7c68f4b2420185eaff6284d4c125/"
-        "FeatureServer/0/query"
-    )
-    oa_pcon_service_url = (
-        "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/"
-        "OA11_PCON11_EER11_EW_LU_529f687ffa0e4f408c9968ae92435e8c/"
-        "FeatureServer/0/query"
-    )
-
-    iod_lsoa_path = next((path for path in iod_lsoa_candidates if path.exists()), None)
-    if iod_lsoa_path is None:
-        deprivation_path.mkdir(parents=True, exist_ok=True)
-        iod_lsoa = pd.read_csv(iod_lsoa_url)
-        iod_lsoa.to_csv(iod_lsoa_candidates[0], index=False)
-    else:
-        iod_lsoa = pd.read_csv(iod_lsoa_path)
-
-    oa_lsoa = _read_arcgis_lookup(
-        oa_lsoa_cache,
-        oa_lsoa_service_url,
-        ["OA11CD", "LSOA11CD"],
-    )[["OA11CD", "LSOA11CD"]]
-    oa_pcon = _read_arcgis_lookup(
-        oa_pcon_cache,
-        oa_pcon_service_url,
-        ["OA11CD", "PCON11CD", "PCON11NM"],
-    )[["OA11CD", "PCON11CD", "PCON11NM"]]
+    oa_lsoa = pd.read_csv(deprivation_path / "oa11_lsoa11_lookup.csv", dtype=str)[["OA11CD", "LSOA11CD"]]
+    oa_pcon = pd.read_csv(deprivation_path / "oa11_pcon11_lookup.csv", dtype=str)[["OA11CD", "PCON11CD", "PCON11NM"]]
 
     lsoa_pcon_votes = pd.merge(
         oa_lsoa,
@@ -986,10 +964,7 @@ def make_merged(year):
     else:
         raise ValueError("year must be 2019 or 2024")
 
-    df_voting = pd.read_excel(
-        RAW_DIR / "voting" / f"HoC-GE{year}-results-by-constituency.xlsx",
-        sheet_name="Data",
-    )
+    df_voting = read_election_results(PROJECT_ROOT, year)
     mortality_path = mortality_data_path()
     df_mortality_m = pd.read_excel(
         mortality_path,
@@ -1915,7 +1890,8 @@ def plot_scatters(df_2019, df_2024, config_list):
     )
     legend.get_frame().set_linewidth(0.7)
 
-    for ax, title in zip(axes, ["a.", "b.", "c.", "d."]):
+    panel_labels = ["2019 | Female", "2019 | Male", "2024 | Female", "2024 | Male"]
+    for ax, title, panel_label in zip(axes, ["a.", "b.", "c.", "d."], panel_labels):
         y_min, y_max = ax.get_ylim()
         ax.set_ylim(y_min - 0.05 * (y_max - y_min), y_max)
         ax.set_axisbelow(True)
@@ -1924,10 +1900,12 @@ def plot_scatters(df_2019, df_2024, config_list):
         ax.tick_params(axis="both", which="major", length=3, width=0.7, color="#555555")
         ax.xaxis.labelpad = 6
         ax.yaxis.labelpad = 6
+        ax.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:,.0f}"))
         for spine in ["left", "bottom"]:
             ax.spines[spine].set_color("#555555")
             ax.spines[spine].set_linewidth(0.7)
         ax.set_title(title, loc="left", fontsize=19, fontweight="bold", y=1.0)
+        ax.set_title(panel_label, loc="right", fontsize=11, color="#444444", y=1.0)
 
     legend_bottom = None
     if party_column == "Lib PC":
@@ -1994,9 +1972,9 @@ def _annotate_scatter_leaders(ax1, ax2, ax3, ax4, df_2019, df_2024):
         (ax1, corbyn, "Islington North", "ASMR_f", (0.15, 500), "arc3,rad=-.45"),
         (ax2, johnson, "Uxbridge and\nSouth Ruislip", "ASMR_m", (-0.2, 340), "arc3,rad=.45"),
         (ax2, corbyn, "Islington North", "ASMR_m", (0.125, 500), "arc3,rad=-.45"),
-        (ax3, starmer, "Holborn\nand\nSt Pancras", "ASMR_f", (0.19, 60), "arc3,rad=-.45"),
+        (ax3, starmer, "Holborn and\nSt Pancras", "ASMR_f", (0.19, 60), "arc3,rad=-.45"),
         (ax3, sunak, "Richmond and\nNorthallerton", "ASMR_f", (-0.1, 400), "arc3,rad=.45"),
-        (ax4, starmer, "Holborn\nand\nSt Pancras", "ASMR_m", (0.2, 315), "arc3,rad=-.45"),
+        (ax4, starmer, "Holborn and\nSt Pancras", "ASMR_m", (0.2, 315), "arc3,rad=-.45"),
         (ax4, sunak, "Richmond and\nNorthallerton", "ASMR_m", (-0.1, 600), "arc3,rad=.45"),
     ]
     for ax, df, label, asmr_column, offset, connectionstyle in leader_specs:
@@ -2010,6 +1988,9 @@ def _annotate_scatter_leaders(ax1, ax2, ax3, ax4, df_2019, df_2024):
             xytext=(x + offset[0], y + offset[1]),
             ha="center",
             va="bottom",
+            fontsize=10,
+            linespacing=1.15,
+            path_effects=[path_effects.withStroke(linewidth=2.5, foreground="white")],
             arrowprops=dict(
                 arrowstyle="->",
                 connectionstyle=connectionstyle,
@@ -2139,8 +2120,8 @@ class BivariateChoroplethPlotter:
                     (i, j),
                     1,
                     1,
-                    edgecolor="k",
-                    linewidth=0.5,
+                    edgecolor="#555555",
+                    linewidth=0.35,
                     facecolor=self.color_list_hex[i * self.num_groups + j],
                     alpha=self.alpha_value,
                 )
@@ -2148,10 +2129,16 @@ class BivariateChoroplethPlotter:
 
         ax_inset.set_xlim([0, self.num_groups])
         ax_inset.set_ylim([0, self.num_groups])
-        ax_inset.set_xticks(list(range(self.num_groups + 1)), x_ticks, fontsize=15)
-        ax_inset.set_xlabel(xaxis_label, fontsize=16)
-        ax_inset.set_yticks(list(range(self.num_groups + 1)), y_ticks, fontsize=15)
-        ax_inset.set_ylabel(yaxis_label, fontsize=16)
+        if len(xaxis_label.splitlines()[0]) > 22:
+            xaxis_label = xaxis_label.replace(" Vote Share", "\nVote Share")
+        ax_inset.set_xticks(list(range(self.num_groups + 1)), x_ticks, fontsize=13)
+        ax_inset.set_xlabel(xaxis_label, fontsize=14, labelpad=7)
+        ax_inset.set_yticks(list(range(self.num_groups + 1)), y_ticks, fontsize=13)
+        ax_inset.set_ylabel(yaxis_label, fontsize=14, labelpad=7)
+        ax_inset.tick_params(length=3, width=0.6, color="#555555", pad=4)
+        for spine in ax_inset.spines.values():
+            spine.set_linewidth(0.7)
+            spine.set_color("black")
 
     def format_tick_label(self, value, significant_digits=None):
         if value != value:
@@ -2168,19 +2155,20 @@ def _quantile_edges(*columns, num_groups=5):
     return values.quantile(np.linspace(0, 1, num_groups + 1)).to_numpy()
 
 
-def _set_map_axis(ax, title):
+def _set_map_axis(ax, title, subtitle):
     ax.set_xlim(125000, 660000)
     ax.set_ylim(10000, 675000)
-    ax.set_title(title, fontsize=35, fontweight="bold", loc="left", y=0.965, x=0)
+    ax.set_title(title, fontsize=28, fontweight="bold", loc="left", y=1.0, pad=14)
+    ax.set_title(subtitle, fontsize=17, fontweight="bold", loc="right", y=1.0, pad=14)
     sns.despine(ax=ax, left=True, right=True, top=True, bottom=True)
     ax.annotate(
         "N",
-        xy=(0.8, 0.95),
-        xytext=(0.8, 0.95 - 0.125),
-        arrowprops=dict(facecolor="black", width=2.5, headwidth=15),
+        xy=(0.82, 0.93),
+        xytext=(0.82, 0.84),
+        arrowprops=dict(arrowstyle="-|>", color="#333333", lw=1.1, mutation_scale=18),
         ha="center",
         va="center",
-        fontsize=20,
+        fontsize=16,
         xycoords=ax.transAxes,
     )
 
@@ -2195,7 +2183,7 @@ def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
         color=(1, 1, 1, 0.2),
         ax=ax,
         edgecolor=(0, 0, 0, 1),
-        linewidth=1.5,
+        linewidth=1.0,
     )
     ax.annotate(
         label,
@@ -2203,13 +2191,14 @@ def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
         xytext=xytext(center),
         ha="center",
         va="center",
-        fontsize=16,
+        fontsize=15,
+        linespacing=1.15,
         arrowprops=dict(
             arrowstyle="->",
             connectionstyle=connectionstyle,
-            color="black",
-            mutation_scale=30,
-            lw=1.5,
+            color="#333333",
+            mutation_scale=22,
+            lw=1.1,
         ),
     )
 
@@ -2332,7 +2321,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion Not\nGood Health (2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 0], "a.")
+    _set_map_axis(axs[0, 0], "a.", "2019 election | Not good health")
 
     df_gpd_2019["column2"] = df_gpd_2019["column3"]
     plotter_disability.plot_bivariate_choropleth(df_gpd_2019, ax=axs[0, 1])
@@ -2341,7 +2330,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion\nDisabled (2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 1], "b.")
+    _set_map_axis(axs[0, 1], "b.", "2019 election | Disability")
 
     plotter_health.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 0])
     plotter_health.plot_inset_legend(
@@ -2349,7 +2338,7 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion Not\nGood Health (2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 0], "c.")
+    _set_map_axis(axs[1, 0], "c.", "2024 election | Not good health")
 
     df_gpd_2024["column2"] = df_gpd_2024["column3"]
     plotter_disability.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 1])
@@ -2358,11 +2347,10 @@ def plot_bivariate_choropleth_map_census(df_gpd_2019, df_gpd_2024, party_list):
         "Proportion\nDisabled (2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 1], "d.")
+    _set_map_axis(axs[1, 1], "d.", "2024 election | Disability")
 
     _annotate_map_leaders(axs, df_gpd_2019, df_gpd_2024)
-    plt.subplots_adjust(wspace=0.2)
-    plt.subplots_adjust(hspace=0.0)
+    fig.subplots_adjust(left=0.09, right=0.97, bottom=0.04, top=0.94, wspace=0.24, hspace=0.12)
     _save_figure(fig, f"{party_slug}_census_health_disability_bivariate_choropleth")
     plt.close(fig)
     return fig
@@ -2404,7 +2392,7 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Female, 2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 0], "a.")
+    _set_map_axis(axs[0, 0], "a.", "2019 | Female ASMR")
 
     df_gpd_2019["column2"] = df_gpd_2019["column3"]
     plotter_m.plot_bivariate_choropleth(df_gpd_2019, ax=axs[0, 1])
@@ -2413,7 +2401,7 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Male, 2019)",
         f"{axis_label}\n(2019)",
     )
-    _set_map_axis(axs[0, 1], "b.")
+    _set_map_axis(axs[0, 1], "b.", "2019 | Male ASMR")
 
     plotter_f.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 0])
     plotter_f.plot_inset_legend(
@@ -2421,7 +2409,7 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Female, 2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 0], "c.")
+    _set_map_axis(axs[1, 0], "c.", "2024 | Female ASMR")
 
     df_gpd_2024["column2"] = df_gpd_2024["column3"]
     plotter_m.plot_bivariate_choropleth(df_gpd_2024, ax=axs[1, 1])
@@ -2430,11 +2418,10 @@ def plot_bivariate_choropleth_map_asmr(df_gpd_2019, df_gpd_2024, party_list):
         "ASMR\n(Male, 2024)",
         f"{axis_label}\n(2024)",
     )
-    _set_map_axis(axs[1, 1], "d.")
+    _set_map_axis(axs[1, 1], "d.", "2024 | Male ASMR")
 
     _annotate_map_leaders(axs, df_gpd_2019, df_gpd_2024)
-    plt.subplots_adjust(wspace=0.2)
-    plt.subplots_adjust(hspace=0.0)
+    fig.subplots_adjust(left=0.09, right=0.97, bottom=0.04, top=0.94, wspace=0.24, hspace=0.12)
     _save_figure(fig, f"{party_slug}_asmr_bivariate_choropleth")
     plt.close(fig)
     return fig
@@ -2454,7 +2441,7 @@ def make_premature_asmr_2021():
     return tables[0].merge(tables[1], on="ONS ID", validate="one_to_one")
 
 
-def make_summary_tables(df_1, df_2, year):
+def _summary_correlation_inputs(frame, year):
     if year == "2019":
         party_share = ["Con PC", "Lab PC", "Lib PC", "Brx PC", "Vote PC"]
     elif year == "2024":
@@ -2470,14 +2457,19 @@ def make_summary_tables(df_1, df_2, year):
         "ProportionProvidesAnyUnpaidCare",
         "HealthDeprivationAndDisabilityRank",
     ]
-    statistic_functions = [("Spearman", spearmanr), ("Pearson", pearsonr)]
-    df = df_2.copy()
+    df = frame.copy()
     if year == "2019":
         # The 2021 workbook has old constituency codes, not 2024 geographies.
         premature = make_premature_asmr_2021().set_index("ONS ID")
         for column in ["PrematureASMR2021_f", "PrematureASMR2021_m"]:
             df[column] = df["ONS ID"].map(premature[column])
             crosstab_var.append(column)
+    return df, party_share, crosstab_var
+
+
+def make_summary_tables(df_1, df_2, year):
+    df, party_share, crosstab_var = _summary_correlation_inputs(df_2, year)
+    statistic_functions = [("Spearman", spearmanr), ("Pearson", pearsonr)]
 
     coefficient_tables = []
     p_value_tables = []
@@ -2513,194 +2505,77 @@ def make_summary_tables(df_1, df_2, year):
     return table_rho, table_p
 
 
-def make_sii():
-    df = pd.read_excel(RAW_DIR / "life_expectancy" / "trends_in_sii.xlsx")
-    df["timeperiod"] = df["timeperiod"].str.replace(" - ", "-")
-    return df.set_index("timeperiod")
+def make_zero_vote_robustness_table(frame, year):
+    """Compare complete pairs with the same pairs excluding zero predictor values.
 
-
-def make_hid():
-    df_hid = pd.read_csv(
-        RAW_DIR / "life_expectancy" / "HID_data_Life expectancy and mortality.csv"
-    )
-    df_hid["Time period"] = df_hid["Time period"].str.replace(" - ", "-")
-    return df_hid.set_index("Time period")
-
-
-def plot_over_time(df_sii, df_hid):
-    _ensure_output_dirs()
-    colors = ["#E4003B", "#0087DC", "#4a6741"]
-    fig = plt.figure(figsize=(11, 5.5))
-    gs = grid_spec.GridSpec(2, 2, width_ratios=[1, 1])
-    ax1 = plt.subplot(gs[:, 0])
-    ax2 = plt.subplot(gs[0, 1])
-    ax2_twinx = ax2.twinx()
-    ax3 = plt.subplot(gs[1, 1])
-    ax3_twinx = ax3.twinx()
-
-    females = df_sii[df_sii["sex"] == "Females"]
-    males = df_sii[df_sii["sex"] == "Males"]
-    first_9_indices = females.index[:9]
-    remaining_indices = females.index[9:]
-
-    for sex_df, marker in [(females, "s"), (males, "o")]:
-        for indices, color in [(first_9_indices, colors[0]), (remaining_indices, colors[1])]:
-            ax1.errorbar(
-                indices,
-                sex_df.loc[indices, "value"],
-                yerr=[
-                    sex_df.loc[indices, "value"] - sex_df.loc[indices, "lower95ci"],
-                    sex_df.loc[indices, "upper95ci"] - sex_df.loc[indices, "value"],
-                ],
-                fmt=marker,
-                markersize=7,
-                color=color,
-                markeredgecolor="k",
-                ecolor="k",
-                linewidth=0.5,
-                capsize=6,
-            )
-
-    legend_elements1 = [
-        Line2D([0], [0], marker="o", color="w", markerfacecolor=colors[0], markeredgecolor="k", markersize=6, label="Male (Pre-2010)"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor=colors[1], markeredgecolor="k", markersize=6, label="Male (Post-2010)"),
-        Line2D([0], [0], marker="s", color="w", markerfacecolor=colors[0], markeredgecolor="k", markersize=6, label="Female (Pre-2010)"),
-        Line2D([0], [0], marker="s", color="w", markerfacecolor=colors[1], markeredgecolor="k", markersize=6, label="Female (Post-2010)"),
-    ]
-    ax1.legend(
-        handles=legend_elements1,
-        loc="lower right",
-        frameon=True,
-        fontsize=8.5,
-        framealpha=1,
-        facecolor="w",
-        edgecolor=(0, 0, 0, 1),
-        ncols=1,
-    )
-    ax1.xaxis.set_major_locator(ticker.MaxNLocator(nbins=7))
-
-    hid_specs = [
-        (ax2_twinx, "Healthy life expectancy at birth - Male", "10 = least deprived", colors[0], "o"),
-        (ax2_twinx, "Healthy life expectancy at birth - Male", "5", colors[1], "d"),
-        (ax2_twinx, "Healthy life expectancy at birth - Male", "01 = most deprived", colors[2], "s"),
-        (ax3_twinx, "Healthy life expectancy at birth - Female", "10 = least deprived", colors[0], "o"),
-        (ax3_twinx, "Healthy life expectancy at birth - Female", "5", colors[1], "d"),
-        (ax3_twinx, "Healthy life expectancy at birth - Female", "01 = most deprived", colors[2], "s"),
-    ]
-    for ax, indicator, category, markerfacecolor, marker in hid_specs:
-        df_hid[(df_hid["Indicator"] == indicator) & (df_hid["Category"] == category)][
-            ["Value"]
-        ].plot(
-            ax=ax,
-            linewidth=0.5,
-            markerfacecolor=markerfacecolor,
-            color="k",
-            marker=marker,
-            markeredgecolor="k",
-            legend=False,
+    Filtering is specific to each political measure and outcome, never global.
+    Vote shares are used because zero votes and zero share are equivalent with
+    the positive denominators in the election data. Turnout is checked separately.
+    This is a non-zero-vote sensitivity analysis, not a candidate-standing lookup.
+    """
+    df, political_measures, outcomes = _summary_correlation_inputs(frame, year)
+    rows = []
+    for outcome in outcomes:
+        mortality_year = "2021" if outcome.startswith("PrematureASMR2021_") else (
+            year if outcome in {"ASMR_f", "ASMR_m"} else ""
         )
-
-    for grid_ax in [ax2_twinx, ax3_twinx]:
-        grid_ax.grid(which="major", linestyle="--", axis="y", alpha=0.3)
-    for grid_ax in [ax2, ax3]:
-        grid_ax.grid(which="major", linestyle="--", axis="x", alpha=0.3)
-    ax1.grid(which="major", linestyle="--", axis="both", alpha=0.3)
-
-    ax1.set_title("a.", fontsize=20, loc="left")
-    ax2_twinx.set_title("b.", fontsize=21, loc="left")
-    ax3_twinx.set_title("c.", fontsize=21, loc="left")
-    ax1.set_ylabel("Slope Index of Inequality\n(Life Expectancy at Birth Differential)", fontsize=13)
-    ax2_twinx.set_ylabel("Male Healthy LE\n(at Birth)", fontsize=13)
-    ax3_twinx.set_ylabel("Female Healthy LE\n(at Birth)", fontsize=13)
-
-    for ax in [ax1, ax2, ax3]:
-        ax.tick_params(axis="x", rotation=0, labelsize=9)
-
-    ax2_twinx.set_ylim(43.5, 72.5)
-    ax3_twinx.set_ylim(43.5, 72.5)
-    ax2.set_xticklabels([])
-    ax2.set_yticklabels([])
-    ax2.set_yticks([])
-    ax3.set_yticklabels([])
-    ax3.set_yticks([])
-
-    sns.despine(ax=ax1)
-    sns.despine(ax=ax2, left=True, right=False)
-    sns.despine(ax=ax2_twinx, left=True)
-    sns.despine(ax=ax3, left=True, right=False)
-    sns.despine(ax=ax3_twinx, left=True)
-
-    legend_elements3 = [
-        Line2D([0], [0], marker="o", color="w", markerfacecolor=colors[0], markeredgecolor="k", markersize=6, label="Least Deprived"),
-        Line2D([0], [0], marker="d", color="w", markerfacecolor=colors[1], markeredgecolor="k", markersize=6, label="5th Decile"),
-        Line2D([0], [0], marker="s", color="w", markerfacecolor=colors[2], markeredgecolor="k", markersize=6, label="Most Deprived"),
-    ]
-    ax3_twinx.legend(
-        handles=legend_elements3,
-        loc="lower center",
-        frameon=True,
-        fontsize=9,
-        framealpha=1,
-        facecolor=(1, 1, 1, 1),
-        edgecolor=(0, 0, 0, 1),
-        ncols=3,
-    )
-
-    ax1.axvline(x=9, color="k", linestyle="--")
-    ax1.annotate(
-        "General Election\n(2010)",
-        xy=(9.15, 7.75),
-        xytext=(2.5, 7.75),
-        ha="center",
-        va="center",
-        fontsize=10,
-        bbox=dict(boxstyle="round,pad=0.3", edgecolor="black", facecolor="w"),
-        arrowprops=dict(
-            arrowstyle="->",
-            connectionstyle="arc3,rad=0",
-            color="black",
-            mutation_scale=20,
-            lw=1,
-        ),
-    )
-
-    fig.tight_layout()
-    _save_figure(fig, "health_inequality_over_time")
-    plt.close(fig)
-    return fig
+        for political_measure in political_measures:
+            pairs = df[[political_measure, outcome]].dropna()
+            nonzero_pairs = pairs.loc[pairs[political_measure].ne(0)]
+            label = {"Brx PC": "Brexit Party", "RUK PC": "Reform UK"}.get(
+                political_measure,
+                PUBLICATION_CORRELATION_TABLE_COLUMN_LABELS.get(political_measure),
+            )
+            for statistic, function in [("Spearman", spearmanr), ("Pearson", pearsonr)]:
+                row = {
+                    "Election year": year,
+                    "Mortality year": mortality_year,
+                    "Health/deprivation measure": PUBLICATION_VARIABLE_LABELS[outcome],
+                    "Political measure": label,
+                    "Correlation": statistic,
+                    "N (all)": len(pairs),
+                    "N (non-zero)": len(nonzero_pairs),
+                    "Zeros excluded": len(pairs) - len(nonzero_pairs),
+                }
+                for sample, selected in [("all", pairs), ("non-zero", nonzero_pairs)]:
+                    if len(selected) < 3 or (selected.nunique() < 2).any():
+                        coefficient, p_value = np.nan, np.nan
+                    else:
+                        coefficient, p_value = function(
+                            selected[political_measure], selected[outcome]
+                        )
+                    row[f"Coefficient ({sample})"] = coefficient
+                    row[f"p-value ({sample})"] = p_value
+                row["Coefficient change"] = (
+                    row["Coefficient (non-zero)"] - row["Coefficient (all)"]
+                )
+                rows.append(row)
+    return pd.DataFrame(rows)
 
 
-def make_temporal_printouts(df_sii, df_hid):
-    df_sii_f = df_sii[df_sii["sex"] == "Females"]
-    print(f"In 2001-2003, the SII for females was: {df_sii_f.loc['2001-03', 'value']}")
-    print(f"In 2018-2020, the SII for females was: {df_sii_f.loc['2018-20', 'value']}")
+def make_zero_vote_robustness_display_table(table):
+    """Format one mortality-year/statistic group without rounding the source table."""
+    display_table = table[[
+        "Health/deprivation measure", "Election year", "Political measure",
+        "N (all)", "N (non-zero)", "Zeros excluded", "Coefficient change",
+    ]].copy()
+    for sample, label, position in [
+        ("all", "All votes: coefficient (p)", 3),
+        ("non-zero", "Non-zero votes: coefficient (p)", 5),
+    ]:
+        values = [
+            "Not estimable" if pd.isna(coefficient) or pd.isna(p_value)
+            else _format_coefficient_with_p_value(coefficient, p_value)
+            for coefficient, p_value in zip(
+                table[f"Coefficient ({sample})"], table[f"p-value ({sample})"]
+            )
+        ]
+        display_table.insert(position, label, values)
+    return display_table
 
-    df_sii_m = df_sii[df_sii["sex"] == "Males"]
-    print(f"In 2001-2003, the SII for males was: {df_sii_m.loc['2001-03', 'value']}")
-    print(f"In 2018-2020, the SII for males was: {df_sii_m.loc['2018-20', 'value']}")
 
-    df_hid_m_10 = df_hid[
-        (df_hid["Indicator"] == "Healthy life expectancy at birth - Male")
-        & (df_hid["Category"] == "10 = least deprived")
-    ]
-    df_hid_m_1 = df_hid[
-        (df_hid["Indicator"] == "Healthy life expectancy at birth - Male")
-        & (df_hid["Category"] == "01 = most deprived")
-    ]
-    print(f"In 2011-2013, Male Healthy LE for 1st decile was: {df_hid_m_1[['Value']].loc['2011-13', 'Value']}")
-    print(f"In 2011-2013, Male Healthy LE for 10th decile was: {df_hid_m_10[['Value']].loc['2011-13', 'Value']}")
-    print(f"In 2018-2020, Male Healthy LE for 1st decile was: {df_hid_m_1[['Value']].loc['2018-20', 'Value']}")
-    print(f"In 2018-2020, Male Healthy LE for 10th decile was: {df_hid_m_10[['Value']].loc['2018-20', 'Value']}")
-
-    df_hid_f_10 = df_hid[
-        (df_hid["Indicator"] == "Healthy life expectancy at birth - Female")
-        & (df_hid["Category"] == "10 = least deprived")
-    ]
-    df_hid_f_1 = df_hid[
-        (df_hid["Indicator"] == "Healthy life expectancy at birth - Female")
-        & (df_hid["Category"] == "01 = most deprived")
-    ]
-    print(f"In 2011-2013, Female Healthy LE for 1st decile was: {df_hid_f_1[['Value']].loc['2011-13', 'Value']}")
-    print(f"In 2011-2013, Female Healthy LE for 10th decile was: {df_hid_f_10[['Value']].loc['2011-13', 'Value']}")
-    print(f"In 2018-2020, Female Healthy LE for 1st decile was: {df_hid_f_1[['Value']].loc['2018-20', 'Value']}")
-    print(f"In 2018-2020, Female Healthy LE for 10th decile was: {df_hid_f_10[['Value']].loc['2018-20', 'Value']}")
+def export_zero_vote_robustness_table(table):
+    TABLES_DIR.mkdir(parents=True, exist_ok=True)
+    path = TABLES_DIR / "zero_vote_robustness.csv"
+    table.to_csv(path, index=False)
+    return path

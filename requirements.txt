@@ -1,9 +1,27 @@
-geopandas==0.14.1
-matplotlib==3.8.4
-numpy==1.23.5
-pandas==2.2.2
+# Python 3.12; versions used for the verified analysis.
+-c requirements-constraints.txt
+geopandas==1.1.1
+matplotlib==3.10.9
+numpy==1.26.4
+pandas==2.3.3
+requests==2.34.2
 openpyxl==3.1.5
-scipy==1.11.1
+scipy==1.16.2
 seaborn==0.13.2
-Shapely==2.0.4
+shapely==2.0.7
+pyogrio==0.11.1
+pyproj==3.7.1
+pillow==10.1.0
+
+# Regional and spatial robustness; compatible with the unchanged numerical stack.
+libpysal==4.13.0
+spreg==1.8.3
+esda==2.6.0
+scikit-learn==1.5.2
+threadpoolctl==3.6.0
+
+# Notebook execution must not depend on a globally installed Jupyter kernel.
 nbconvert==7.16.6
+nbformat==5.10.4
+nbclient==0.10.2
+ipykernel==7.0.1

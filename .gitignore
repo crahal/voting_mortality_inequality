@@ -165,3 +165,9 @@ data/
 .idea
 data/shapefile
 paper/*
+
+# Repository tooling and local environment overrides.
+.ruff_cache/
+.DS_Store
+.env.*
+!.env.example
