@@ -34,14 +34,17 @@ class AnalysisEnvironmentTests(unittest.TestCase):
             environment, "version", side_effect=lambda name: self.versions[name],
         ))
 
+    # An external interpreter's absolute path can be a suffix of its relative path.
+    @patch.object(environment.sys, "executable", "/opt/hostedtoolcache/Python/3.12/bin/python")
     def test_verified_versions_pass_and_comments_includes_markers_are_handled(self):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             environment.validate_analysis_environment()
-        self.assertIn("matches requirements.txt", output.getvalue())
-        self.assertIn(os.path.relpath(sys.executable), output.getvalue())
-        self.assertNotIn(sys.executable, output.getvalue())
+        self.assertEqual(output.getvalue().splitlines(), [
+            f"Analysis environment matches requirements.txt. Python: {os.path.relpath(sys.executable)}",
+        ])
         self.assertEqual([call.args[0] for call in self.version.call_args_list], ["numpy", "spreg"])
 
+    @patch.object(environment.sys, "executable", "/opt/hostedtoolcache/Python/3.12/bin/python")
     def test_wrong_numpy_identifies_the_kernel_and_required_version(self):
         self.versions["numpy"] = "2.5.4"
         with self.assertRaises(RuntimeError) as caught:
@@ -49,8 +52,8 @@ class AnalysisEnvironmentTests(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("numpy: installed 2.5.4; required ==1.26.4", message)
         self.assertIn("Voting mortality (pinned)", message)
-        self.assertIn(os.path.relpath(sys.executable), message)
-        self.assertNotIn(sys.executable, message)
+        self.assertIn(f"Python executable: {os.path.relpath(sys.executable)}", message.splitlines())
+        self.assertNotIn(f"Python executable: {sys.executable}", message.splitlines())
         self.assertIn("Do not replace the pinned result hashes", message)
 
     def test_missing_spatial_dependency_is_reported_before_analysis(self):
