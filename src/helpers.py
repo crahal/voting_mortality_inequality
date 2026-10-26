@@ -1990,12 +1990,14 @@ def plot_scatters(df_2019, df_2024, config_list):
             framealpha=1,
             facecolor="w",
             edgecolor="black",
-            handlelength=1,
-            handletextpad=0.6,
+            # Keep the legend clear of the statistics box, including in offline
+            # layout tests that render with wider fallback fonts before export.
+            handlelength=0.8,
+            handletextpad=0.3,
             labelspacing=0.4,
-            borderpad=0.6,
+            borderpad=0.4,
             ncols=3,
-            columnspacing=0.8,
+            columnspacing=0.5,
         )
         legend.get_frame().set_linewidth(0.7)
 
