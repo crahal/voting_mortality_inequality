@@ -122,14 +122,14 @@ class ChoroplethStyleTests(unittest.TestCase):
         self.assertEqual(annotation.xy, (center.x, center.y))
         self.assertEqual(annotation.xyann, (center.x - 135000, center.y))
         self.assertEqual(annotation.get_text(), "Chorley\n(Speaker)")
-        self.assertEqual(annotation.get_fontsize(), 18)
+        self.assertEqual(annotation.get_fontsize(), 19)
         self.assertTrue(annotation.get_path_effects())
         self.assertEqual(annotation.arrow_patch.get_connectionstyle().rad, .45)
-        self.assertEqual(annotation.arrow_patch.get_linewidth(), 1.6)
+        self.assertEqual(annotation.arrow_patch.get_linewidth(), 2.0)
         self.assertEqual(annotation.arrow_patch.get_mutation_scale(), 28)
         ring = axis.collections[0]
         self.assertEqual(len(ring.get_facecolors()), 0)
-        np.testing.assert_array_equal(ring.get_linewidths(), [1.5])
+        np.testing.assert_array_equal(ring.get_linewidths(), [2.0])
         self.assertTrue(Polygon(ring.get_paths()[0].vertices).equals(center.buffer(radius * 1.2)))
 
 

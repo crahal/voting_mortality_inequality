@@ -2232,7 +2232,7 @@ def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
         facecolor="none",
         ax=ax,
         edgecolor="#333333",
-        linewidth=1.5,
+        linewidth=2.0,
         zorder=4,
     )
     ax.annotate(
@@ -2241,7 +2241,7 @@ def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
         xytext=xytext(center),
         ha="center",
         va="center",
-        fontsize=18,
+        fontsize=19,
         color="#222222",
         linespacing=1.15,
         path_effects=[path_effects.withStroke(linewidth=2.5, foreground="white")],
@@ -2251,7 +2251,7 @@ def _circle_and_label(ax, row, label, xytext, radius_scale, connectionstyle):
             connectionstyle=connectionstyle,
             color="#333333",
             mutation_scale=28,
-            lw=1.6,
+            lw=2.0,
             shrinkA=5,
         ),
     )
