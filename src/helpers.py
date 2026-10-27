@@ -1867,6 +1867,7 @@ def export_full_correlation_tables_docx(
         output_path,
         "Table 1. Constituency-level correlations of political party vote share and turnout with mortality, Census health and caring measures, and health deprivation in England.",
         [
+            "ASMR denotes age-standardised mortality rate per 100,000 population. "
             "Entries are Spearman's \u03c1 or Pearson's r, with two-sided unadjusted p-values in parentheses; "
             "these p-values do not account for spatial dependence. N denotes constituencies. "
             "The 2021 rows are premature ASMRs paired only with 2019 voting; "

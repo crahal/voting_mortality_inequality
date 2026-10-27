@@ -142,6 +142,7 @@ class PrematureCorrelationTests(unittest.TestCase):
                          "Table 1. Constituency-level correlations of political party vote share and turnout "
                          "with mortality, Census health and caring measures, and health deprivation in England.")
         self.assertEqual(paragraphs[1:], [
+            "ASMR denotes age-standardised mortality rate per 100,000 population. "
             "Entries are Spearman's \u03c1 or Pearson's r, with two-sided unadjusted p-values in parentheses; "
             "these p-values do not account for spatial dependence. N denotes constituencies. "
             "The 2021 rows are premature ASMRs paired only with 2019 voting; "
@@ -248,6 +249,8 @@ class PrematureCorrelationTests(unittest.TestCase):
         title = "".join(root.find("w:body/w:p", ns).itertext())
         self.assertTrue(title.startswith("Online compact summary."))
         self.assertFalse(title.startswith("Table 1."))
+        notes = " ".join("".join(p.itertext()) for p in root.findall("w:body/w:p", ns))
+        self.assertIn("ASMR denotes age-standardised mortality rate per 100,000 population.", notes)
         table = root.find(".//w:tbl", ns)
         grid = table.findall("w:tblGrid/w:gridCol", ns)
         self.assertEqual(len(grid), 12)
