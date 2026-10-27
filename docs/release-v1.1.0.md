@@ -48,7 +48,20 @@ has not been assumed to be under 75.
 
 ## Citation
 
-Use the version-specific Zenodo DOI linked from the
-[v1.1.0 GitHub release](https://github.com/crahal/voting_mortality_inequality/releases/tag/v1.1.0).
+The [v1.1.0 GitHub release](https://github.com/crahal/voting_mortality_inequality/releases/tag/v1.1.0)
+is archived at the version-specific DOI
+[10.5281/zenodo.23690243](https://doi.org/10.5281/zenodo.23690243).
+The release tag points to commit `30888f89b67dcfb8962dbefcbbb074ea905836c7`.
+The downloaded Zenodo ZIP passed its published size and MD5 checksum check;
+all 95 archived files matched the tag's Git blob hashes exactly. Its published
+MD5 checksum is `2f37ea02b63d45cd3ce51abd31afd06c`.
+The DOI was assigned after publication; this documentation-only follow-up adds
+it without moving the release tag or changing any analysis files or outputs.
+
+Rahal C. Replication materials for "Voting Patterns, Mortality, and Health
+Inequalities in England: A replication and extension of Smith and Dorling (1996)"
+[software]. Version v1.1.0. Zenodo; 2026.
+https://doi.org/10.5281/zenodo.23690243.
+
 The [archive-series DOI](https://doi.org/10.5281/zenodo.20508898) identifies all
 versions, not a fixed numerical-analysis release.

@@ -3,7 +3,7 @@
 [![Checks](https://github.com/crahal/voting_mortality_inequality/actions/workflows/checks.yml/badge.svg)](https://github.com/crahal/voting_mortality_inequality/actions/workflows/checks.yml)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB)](requirements.txt)
 [![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](LICENSE)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20508898.svg)](https://doi.org/10.5281/zenodo.20508898)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23690243.svg)](https://doi.org/10.5281/zenodo.23690243)
 
 Research code and publication outputs examining associations between voting,
 mortality and health inequalities across English parliamentary constituencies.
@@ -125,11 +125,12 @@ The notebook is the orchestration layer. Source-specific verification is in
 The current release is
 [`v1.1.0`](https://github.com/crahal/voting_mortality_inequality/releases/tag/v1.1.0).
 See its [release notes](docs/release-v1.1.0.md) for the changes and verification.
-The [Zenodo archive series](https://doi.org/10.5281/zenodo.20508898) contains the
-archived versions; cite the version-specific DOI linked from the GitHub release,
-not the earlier `v1.0.1` archive. [CITATION.cff](CITATION.cff) provides the citation
-metadata. For development changes after a release, also record the Git commit
-used; the working tree is not necessarily identical to the archived release.
+Its version-specific Zenodo DOI is
+[10.5281/zenodo.23690243](https://doi.org/10.5281/zenodo.23690243).
+Cite this archive, not the earlier `v1.0.1` archive, for the current analysis.
+[CITATION.cff](CITATION.cff) provides the citation metadata. For development
+changes after a release, also record the Git commit used; the working tree is
+not necessarily identical to the archived release.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks and the policy for
 changes to data or results. Use the repository's

@@ -1,7 +1,6 @@
 cff-version: 1.2.0
 message: >-
-  Cite version v1.1.0 using the version-specific Zenodo DOI linked from its
-  GitHub release. The DOI below identifies the archive series (all versions).
+  Cite the archived v1.1.0 release using the version-specific Zenodo DOI below.
   For development changes after this release, also report the Git commit used.
 type: software
 title: >-
@@ -11,11 +10,11 @@ authors:
   - family-names: Rahal
     given-names: Charles
     affiliation: University of Oxford
-doi: 10.5281/zenodo.20508898
+doi: 10.5281/zenodo.23690243
 version: v1.1.0
 date-released: 2026-10-27
 repository-code: https://github.com/crahal/voting_mortality_inequality
-url: https://github.com/crahal/voting_mortality_inequality/releases/tag/v1.1.0
+url: https://zenodo.org/records/23690243
 abstract: >-
   Replication code and publication outputs for an ecological analysis of voting,
   mortality and health inequalities across English parliamentary constituencies.
